@@ -1,0 +1,176 @@
+🎯 Objective
+
+Enhance my existing Hydraulic Transient Analysis Software to fully support WHAMO .inp file compatibility, specifically for:
+
+Pump (P1, P2)
+Check Valve (VC1, VC2)
+
+Ensure ALL variables from pump1.inp are correctly mapped, editable, and simulated, including advanced features like:
+
+Negative discharge
+Four-quadrant pump curves (PCHAR)
+Operating pump logic (OPPUMP)
+
+⚠️ Important:
+Do NOT change existing UI flow, database structure, or working features. Only extend functionality cleanly.
+
+🔧 1. Add New Elements (Insert Menu)
+➤ Pump Element
+Icon: Circle with filled triangle (flow direction)
+Label: P1, P2...
+Behavior: Inline element between nodes (splits conduit)
+➤ Check Valve (ONEWAY)
+Icon: Triangle + vertical bar (one-way)
+Label: VC1, VC2...
+Behavior: Inline after pump
+🧠 2. Element Logic (VERY IMPORTANT)
+Pump ≠ Conduit
+Conduit = passive
+Pump = active (adds energy, dynamic)
+Check Valve
+Passive but directional
+Prevents reverse flow
+Can slam shut → surge generation
+🧾 3. Side Panel Fields Mapping (STRICT .inp MAPPING)
+➤ Pump Properties Panel
+Basic
+ID
+Start Node
+End Node
+Hydraulic Parameters (from .inp)
+Rated Flow (RQ)
+Rated Head (RHEAD)
+Rated Speed (RSPEED)
+Rated Torque (RTORQUE)
+WR² (Moment of Inertia)
+Operation
+
+Pump Status (ACTIVE / INACTIVE)
+👉 Maps to:
+
+OPPUMP ID P1 PUMP
+Flow Handling
+Design Flow (ALLOW NEGATIVE VALUES)
+👉 Required for reverse flow simulation
+Advanced
+Pump Type (TYPE 1 / TYPE 2)
+➤ Check Valve Properties Panel
+ID
+Start Node
+End Node
+Diameter (DIAM)
+Status (Open / Closed)
+
+👉 Maps to:
+
+ONEWAY ID VC1 DIAM 14.76
+📊 4. Pump Characteristics (PCHAR Integration) 🚨 CRITICAL
+Create NEW Section: "Pump Characteristics"
+Structure:
+➤ Type Selection
+TYPE 1 / TYPE 2
+➤ Input Fields:
+SRATIO (array of 11 values)
+QRATIO (array of 12 values)
+HRATIO (12 × 11 matrix)
+TRATIO (12 × 11 matrix)
+🧠 Behavior:
+Store PCHAR separately (global config)
+Link using:
+PUMP ID P1 TYPE 1
+🎯 UI Requirement:
+
+Provide:
+
+Table/grid input for matrices
+Paste-friendly input (important)
+Scrollable matrix editor
+🔄 5. .INP File Parsing & Generation
+➤ Import Logic
+
+Parse and map:
+
+SYSTEM Section
+ELEM → connections
+Nodes
+Junctions
+Elements
+CONDUIT
+PUMP
+ONEWAY
+Pump Data
+RQ, RHEAD, RSPEED, RTORQUE, WR²
+PCHAR
+Fully parse all arrays and matrices
+OPPUMP
+Set pump status = ACTIVE
+➤ Export Logic
+
+Generate .inp EXACTLY like WHAMO format:
+
+Include:
+SYSTEM
+CONDUIT
+PUMP
+ONEWAY
+PCHAR (FULL MATRIX)
+OPPUMP
+CONTROL
+Ensure:
+Order preserved
+Formatting preserved
+Negative values preserved
+🔗 6. Canvas Behavior (VERY IMPORTANT)
+When user adds Pump/Valve:
+Insert BETWEEN nodes
+Auto-create intermediate nodes
+Example:
+
+Before:
+
+N3 -------- C2 -------- N4
+
+After:
+
+N3 --- C2a --- P1 --- C2b --- VC1 --- C2c --- N4
+🧩 7. Flex Table Integration
+Add New Tables:
+Pump Table
+ID
+From Node
+To Node
+RQ
+RHEAD
+Status
+Valve Table
+ID
+From Node
+To Node
+DIAM
+Status
+⚙️ 8. Simulation Logic (Basic)
+Pump:
+Adds head dynamically
+Uses PCHAR curves
+Supports reverse flow
+Valve:
+Allows only one-way flow
+Blocks reverse
+Causes surge on closure
+🚫 Constraints
+❌ Do NOT change DB schema
+❌ Do NOT break existing conduit logic
+❌ Do NOT redesign UI
+✅ Extend cleanly
+🎯 Final Expected Output
+
+After implementation:
+
+✅ Pump & Valve visible in menu
+✅ Proper icons (as per your UI images)
+✅ Full .inp compatibility
+✅ Negative discharge handled
+✅ PCHAR fully working
+✅ OPPUMP mapped to UI
+✅ Flex table synced
+✅ Canvas auto-splitting works

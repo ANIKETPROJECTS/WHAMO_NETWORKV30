@@ -1,0 +1,119 @@
+🎯 Objective
+
+Enable per-element unit switching (SI / FPS) directly inside the Flex Table, similar to the right-side panel, with full two-way synchronization.
+
+🧩 Feature Requirements
+1. Add SI/FPS Column (Per Row Control)
+✅ UI Changes
+
+Add a new column:
+
+[ Type ] [ Unit (SI/FPS) ] [ Label ] ...
+Column name: Unit
+Position: Right next to “Type” column
+✅ Behavior
+Each row (element) has its own:
+Toggle / dropdown:
+SI | FPS
+Default value:
+Same as current global/system unit OR element’s existing unit
+2. Per-Element Unit Conversion
+✅ When user changes unit (SI ↔ FPS) for a row:
+Convert ALL numeric fields of that element:
+Diameter
+Length
+Elevation
+Wave Speed
+Friction
+etc.
+💡 Conversion Rules (Example)
+Length:
+m ↔ ft
+Diameter:
+m ↔ ft
+Velocity:
+m/s ↔ ft/s
+Pressure:
+Pa ↔ psi
+⚠️ Important
+Keep internal base values in SI
+Only convert for display
+Avoid precision loss
+3. Two-Way Sync (CRITICAL)
+✅ Flex Table → Side Panel
+Changing unit in table:
+Instantly updates right-side panel values & unit
+✅ Side Panel → Flex Table
+Changing unit in side panel:
+Updates corresponding row in Flex Table
+4. Global Consistency Across Filters
+✅ Behavior
+When switching filters:
+All elements retain their individual unit selection
+Unit column should always reflect:
+Current unit of that element
+5. State Management (MANDATORY)
+✅ Use Central Store
+Use:
+Zustand / Context / Redux
+Example Structure:
+elements: {
+  [id]: {
+    type: "conduit",
+    unit: "SI" | "FPS",
+    values: {
+      length: number,   // stored in SI
+      diameter: number,
+      elevation: number,
+      ...
+    }
+  }
+}
+6. Conversion Utility (Reusable)
+const convertValue = (value, field, fromUnit, toUnit) => {
+  if (fromUnit === toUnit) return value;
+
+  const conversions = {
+    length: 3.28084,
+    diameter: 3.28084,
+    velocity: 3.28084,
+    pressure: 0.000145038,
+  };
+
+  const factor = conversions[field] || 1;
+
+  return toUnit === "FPS"
+    ? value * factor
+    : value / factor;
+};
+7. Rendering Logic
+✅ Display Layer
+Before rendering:
+Convert from SI → selected unit
+✅ Editing
+On edit:
+Convert back → store in SI
+8. UI/UX Guidelines
+Unit column:
+Compact toggle (SI / FPS)
+Styled like right panel toggle
+Highlight:
+Changed unit rows (optional)
+Smooth updates (no flicker)
+9. Performance
+Avoid full table re-render
+Update only affected row
+Memoize conversions if needed
+⚠️ Constraints
+DO NOT:
+Break diagram interactions
+Affect .INP / .OUT generation
+DO:
+Extend existing logic only
+✅ Expected Output
+Flex Table with:
+Per-row SI/FPS toggle
+Accurate conversion:
+Table ↔ Side Panel
+Persistent unit per element
+Clean, scalable architecture

@@ -1,0 +1,240 @@
+Task 1: Fix Excel Export/Import for All Element Types
+
+Currently, when exporting filtered elements (especially Surge Tank, Flow Boundary Condition, Reservoir, etc.), several fields are not being exported correctly to Excel.
+
+Issues Identified
+
+From the attached screenshots:
+
+Surge Tank Excel Export Missing Values
+UI shows values correctly:
+Tank Type
+HTANK
+Riser Diameter
+Riser Top
+Use Shape
+Diameter
+Wave Speed
+Friction
+Added Loss
+CPLUS
+CMINUS
+Comment
+But exported Excel file contains blank cells for some of these fields.
+Dropdown Fields Not Exporting Correctly
+Tank Type dropdown value is missing.
+Added Loss dropdown value is missing.
+Any other dropdown-based fields should export their selected value.
+Default/Initial Dropdown Values Not Included
+Example:
+Unit (SI/FPS) exports correctly.
+All dropdown fields should behave similarly and export the currently selected value.
+Filter-Based Export Issues
+When user selects:
+Surge Tank
+Reservoir
+Flow BC
+Junction
+Node
+Dummy Pipe
+Conduit
+Export should contain all visible columns and values exactly as displayed in Flex Table.
+Import/Export Consistency
+Exported Excel → Import back into system.
+All values must restore exactly.
+No dropdown value should become blank after re-import.
+Required Implementation
+Create Universal Export Mapping
+
+Build a reusable export layer that:
+
+Reads displayed Flex Table data.
+Reads raw stored values.
+Reads dropdown selected values.
+Reads boolean values.
+Reads numeric values.
+Reads text values.
+
+And exports them consistently.
+
+Example:
+
+{
+  unit: "FPS",
+  tankType: "SIMPLE",
+  addedLoss: "No",
+  useShape: true,
+  waveSpeed: 4700,
+  friction: 0.0066
+}
+
+must appear exactly in Excel.
+
+Excel Export Rules
+
+For every element type:
+
+Dropdown Fields
+
+Export selected display value:
+
+Tank Type → SIMPLE
+Added Loss → No
+Unit → FPS
+
+not:
+
+null
+undefined
+empty
+id reference
+Boolean Fields
+
+Export as:
+
+true
+false
+
+or existing project format.
+
+Numeric Fields
+
+Export actual values:
+
+1996.4
+1853.68
+4700
+0.0066
+
+No blank cells.
+
+Text Fields
+
+Export exact stored text.
+
+Universal Element Support
+
+Apply the same export/import logic to:
+
+Nodes
+Junctions
+Reservoirs
+Surge Tanks
+Flow Boundary Conditions
+Conduits
+Dummy Pipes
+Any future element type
+
+Avoid hardcoding only Surge Tank.
+
+Create a shared export utility.
+
+Validation Requirements
+
+Before generating Excel:
+
+Validate every row:
+
+if(field.type === "dropdown")
+{
+   export selected option label/value
+}
+
+Prevent blank exports for valid data.
+
+Task 2: Fix Help Guide Modal Closing Automatically
+Current Bug
+
+When user clicks:
+
+Help Button
+
+Guide opens correctly.
+
+However, after clicking:
+
+Getting Started
+Network Elements
+Connections
+Flex Table
+Excel Import/Export
+Running Simulations
+INP & OUT Files
+Keyboard Shortcuts
+Troubleshooting
+Download PDF
+
+the guide panel/modal automatically closes.
+
+This is incorrect behavior.
+
+Required Fix
+
+The Help Guide must remain open when:
+
+Navigating between sections.
+Clicking sidebar menu items.
+Scrolling content.
+Downloading PDF.
+Switching tabs within guide.
+
+Only close when:
+
+User clicks X button.
+User explicitly closes modal.
+ESC key pressed (if supported).
+Technical Investigation
+
+Check for:
+
+event propagation
+outside click handlers
+modal close listeners
+navigation state updates
+route changes
+PDF download callbacks
+focus loss handlers
+
+Likely one of these is triggering modal close unintentionally.
+
+Expected Behavior
+Help Screen
+Open Help
+   ↓
+Click Network Elements
+   ↓
+Content changes
+   ↓
+Modal remains open
+Download PDF
+Open Help
+   ↓
+Click Download PDF
+   ↓
+PDF downloads
+   ↓
+Help screen remains open
+Testing Checklist
+Excel Export
+ Surge Tank exports all values.
+ Tank Type exports correctly.
+ Added Loss exports correctly.
+ Use Shape exports correctly.
+ CPLUS exports correctly.
+ CMINUS exports correctly.
+ Comment exports correctly.
+ Reservoir export works.
+ Flow BC export works.
+ Node export works.
+ Junction export works.
+ Dummy Pipe export works.
+ Conduit export works.
+ Export → Import restores all values correctly.
+Help Guide
+ Clicking sidebar menu does not close modal.
+ Download PDF does not close modal.
+ Content navigation works correctly.
+ Close button still works.
+ No regression in existing help functionality.
+
+Deliver clean, production-ready code with proper reusable export/import utilities and maintain all existing project functionality.

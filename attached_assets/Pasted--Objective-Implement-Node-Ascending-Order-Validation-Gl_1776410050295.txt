@@ -1,0 +1,133 @@
+🎯 Objective
+
+Implement:
+
+Node Ascending Order Validation
+Global Color-Based Notification System (Success / Warning / Error)
+
+Without breaking any existing logic, UI, or simulation flow.
+
+🧩 Feature 1: Node Ascending Order Validation
+📌 Requirement
+All connected nodes in a pipeline/network path must follow ascending order
+
+Rule:
+
+Current Node > Previous Node
+
+Example:
+
+✅ Valid:   N2 → N3 → N10 → N12 → N15
+❌ Invalid: N2 → N3 → N10 → N12 → N1 → N15
+                             ↑ ERROR
+⚙️ Behavior
+While:
+Creating connections
+Editing node numbers
+Loading saved project
+
+Validate sequence:
+
+if (currentNode <= previousNode) {
+    // trigger error
+}
+🚨 UI Feedback
+Highlight invalid node:
+Red border or glow
+Highlight invalid connection path
+
+Show message:
+
+"Node order must be in ascending sequence. Node 1 cannot come after Node 12."
+🧠 Validation Logic (Frontend)
+function validateNodeSequence(nodes) {
+  let errors = [];
+
+  for (let i = 1; i < nodes.length; i++) {
+    if (nodes[i] <= nodes[i - 1]) {
+      errors.push({
+        index: i,
+        message: `Node ${nodes[i]} must be greater than Node ${nodes[i - 1]}`
+      });
+    }
+  }
+
+  return errors;
+}
+⚠️ Behavior Rules
+❌ Do NOT block UI interaction completely
+✅ Show warning/error visually + notification
+✅ Prevent invalid data from saving/export (.INP)
+🧩 Feature 2: Color-Based Notification System
+📌 Requirement
+
+Implement a global toast/notification system with:
+
+Type	Color	Use Case
+Success	🟢 Green	Data saved
+Warning	🟡 Yellow	Validation issue
+Error	🔴 Red	Critical issue
+⚙️ Behavior
+✅ Success (Green)
+
+On Save:
+
+"Data saved successfully"
+⚠️ Warning (Yellow)
+
+Non-blocking issues:
+
+"Node sequence is not in ascending order"
+❌ Error (Red)
+
+Blocking issues:
+
+"Invalid node sequence. Please fix before proceeding"
+🛠️ Implementation (React)
+Option 1: Custom Toast Context
+const showNotification = ({ type, message }) => {
+  // type: 'success' | 'warning' | 'error'
+};
+Example Usage:
+showNotification({
+  type: 'error',
+  message: 'Node 1 cannot come after Node 12'
+});
+Option 2: Using Library (Recommended)
+
+Use:
+
+react-hot-toast OR notistack
+
+Example:
+
+import toast from 'react-hot-toast';
+
+toast.success("Data saved successfully");
+toast.error("Invalid node sequence");
+toast("Warning: Node order issue", { icon: "⚠️" });
+🎨 UI Styling
+Green → bg-green-500
+Yellow → bg-yellow-400
+Red → bg-red-500
+
+Ensure:
+
+Smooth animation
+Auto-dismiss (3–5 sec)
+Stackable notifications
+🔗 Integration Points
+Node Editor Panel
+Network Diagram Drag/Connect
+Flex Table
+Save / Generate .INP
+⚠️ Constraints
+❌ Do NOT modify core simulation logic
+❌ Do NOT break existing node structure
+❌ Do NOT slow down UI performance
+✅ Keep validation lightweight and real-time
+✨ Expected Outcome
+Node sequence always validated in real-time
+Clear visual + notification feedback
+Professional UX like engineering tools (CWC / WHAMO style)
+Clean and maintainable code

@@ -1,0 +1,1677 @@
+import { create } from 'zustand';
+import {
+  Connection,
+  Edge,
+  EdgeChange,
+  Node,
+  NodeChange,
+  addEdge,
+  OnNodesChange,
+  OnEdgesChange,
+  OnConnect,
+  MarkerType,
+  applyNodeChanges,
+  applyEdgeChanges,
+} from '@xyflow/react';
+import { NodeType, LinkType } from '@shared/schema';
+import { getNodeSequenceViolations } from './validator';
+
+export type UnitSystem = 'SI' | 'FPS';
+
+export interface PcharType {
+  sratio: number[];   // any length (user-defined)
+  qratio: number[];   // any length (user-defined)
+  hratio: number[][];  // [qratio.length rows][sratio.length cols]
+  tratio: number[];    // flat qratio.length × sratio.length values
+}
+
+export interface TcharType {
+  gate: number[];        // Gate opening fractions (0.0 to 1.0)
+  head: number[];        // Head values
+  qMatrix: number[][];   // Flow matrix [gate.length rows × head.length cols]
+  effMatrix: number[][];  // Efficiency matrix [gate.length rows × head.length cols]
+}
+
+// Define base data structures for our specific engineering domain
+interface UnitCache {
+  FPS?: Record<string, any>;
+  SI?: Record<string, any>;
+}
+
+interface NodeData extends Record<string, unknown> {
+  label: string;
+  type: NodeType;
+  unit?: UnitSystem;
+  elevation?: number | string;
+  reservoirElevation?: number | string;
+  nodeNumber?: number;
+  comment?: string;
+  // Specific properties
+  topElevation?: number | string;
+  bottomElevation?: number | string;
+  diameter?: number | string;
+  celerity?: number | string;
+  friction?: number | string;
+  scheduleNumber?: number;
+  schedulePoints?: { time: number; flow: number | string }[];
+  tankTop?: number | string;
+  tankBottom?: number | string;
+  shape?: { e: number | string; a: number | string }[];
+  mode?: 'fixed' | 'schedule';
+  hScheduleNumber?: number;
+  _unitCache?: UnitCache;
+}
+
+interface EdgeData extends Record<string, unknown> {
+  label: string;
+  type: LinkType;
+  unit?: UnitSystem;
+  // Conduit / dummy pipe fields
+  length?: number | string;
+  diameter?: number | string;
+  celerity?: number | string;
+  friction?: number | string;
+  numSegments?: number;
+  cplus?: number | string;
+  cminus?: number | string;
+  hasAddedLoss?: boolean;
+  comment?: string;
+  variable?: boolean;
+  distance?: number | string;
+  area?: number | string;
+  d?: number | string;
+  a?: number | string;
+  _unitCache?: UnitCache;
+  // Pump element-edge fields
+  pumpStatus?: string;
+  pumpType?: number;
+  rq?: number | string;
+  rhead?: number | string;
+  rspeed?: number | string;
+  rtorque?: number | string;
+  wr2?: number | string;
+  // CheckValve element-edge fields
+  valveStatus?: string;
+  valveDiam?: number | string;
+  // Turbine element-edge fields
+  turbineType?: number;
+  syncSpeed?: number | string;
+  turbFriction?: number | string;
+  windage?: number | string;
+  turbineDiameter?: number | string;
+  operationMode?: string;
+  vScheduleNumber?: number;
+  designHead?: number | string;
+}
+
+export type WhamoNode = Node<NodeData>;
+export type WhamoEdge = Edge<EdgeData>;
+
+export interface TimeStage {
+  dtcomp: number;
+  dtout: number;
+  tmax: number;
+}
+
+export interface ComputationalParameters {
+  stages: TimeStage[];
+  accutest: 'FULL' | 'PARTIAL' | 'NONE';
+  includeAccutest?: boolean;
+}
+
+interface OutputRequest {
+  id: string; // Internal ID for the request
+  elementId: string; // ID of the node or edge
+  elementType: 'node' | 'edge';
+  isElement?: boolean; // For nodes, distinguish between Node and Element (e.g. Surge Tank)
+  requestType: 'HISTORY' | 'PLOT' | 'SPREADSHEET';
+  variables: string[]; // e.g., ['Q', 'HEAD', 'ELEV']
+}
+
+interface NetworkState {
+  nodes: WhamoNode[];
+  edges: WhamoEdge[];
+  hSchedules: { number: number; points: { time: number; head: number | string }[] }[];
+  qSchedules: Record<number, { time: number; flow: number | string }[]>;
+  selectedElementId: string | null;
+  selectedElementType: 'node' | 'edge' | null;
+  computationalParams: ComputationalParameters;
+  outputRequests: OutputRequest[];
+  snapshotTimes: number[];
+  isLocked: boolean;
+  projectName: string;
+  projectNameError: string | null;
+  loadedFileHandle: FileSystemFileHandle | null;
+  globalUnit: UnitSystem;
+  showHoverData: boolean;
+  applyMaterialToAllConduits: boolean;
+  nodeSelectionSet: Set<string>;
+  pcharData: Record<number, PcharType>;
+  tcharData: Record<number, TcharType>;
+  vSchedules: Record<number, { t: number; g: number }[]>;
+  nodeOrderErrorIds: string[];
+  history: {
+    past: Partial<NetworkState>[];
+    future: Partial<NetworkState>[];
+  };
+
+  // Actions
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+  onConnect: OnConnect;
+  addNode: (type: NodeType, position: { x: number; y: number }) => void;
+  addEdgeElement: (type: 'pump' | 'checkValve' | 'turbine', sourceId: string, targetId: string) => void;
+  updateNodeData: (id: string, data: Partial<NodeData>) => void;
+  updateEdgeData: (id: string, data: Partial<EdgeData>) => void;
+  deleteElement: (id: string, type: 'node' | 'edge') => void;
+  selectElement: (id: string | null, type: 'node' | 'edge' | null) => void;
+  loadNetwork: (nodes: WhamoNode[], edges: WhamoEdge[], params?: ComputationalParameters, requests?: OutputRequest[], projectName?: string, fileHandle?: FileSystemFileHandle, pcharData?: Record<number, PcharType>, snapshotTimes?: number[], nodeSelectionSet?: string[], tcharData?: Record<number, TcharType>, vSchedules?: Record<number, { t: number; g: number }[]>) => void;
+  clearNetwork: () => void;
+  updatePcharData: (pumpType: number, data: PcharType) => void;
+  updateTcharData: (turbineType: number, data: TcharType) => void;
+  addTcharType: (typeNum?: number) => void;
+  deleteTcharType: (typeNum: number) => void;
+  updateVSchedule: (schedNum: number, points: { t: number; g: number }[]) => void;
+  addVSchedule: (schedNum: number) => void;
+  deleteVSchedule: (schedNum: number) => void;
+  autoArrange: () => void;
+  autoSelectOutputRequests: () => void;
+  updateComputationalParams: (params: Partial<ComputationalParameters>) => void;
+  addOutputRequest: (request: Omit<OutputRequest, 'id'>) => void;
+  removeOutputRequest: (id: string) => void;
+  addSnapshotTime: (time: number) => void;
+  removeSnapshotTime: (index: number) => void;
+  addPcharType: (typeNum?: number) => void;
+  deletePcharType: (typeNum: number) => void;
+  toggleLock: () => void;
+  setProjectName: (name: string) => void;
+  setProjectNameError: (error: string | null) => void;
+  setLoadedFileHandle: (handle: FileSystemFileHandle | null) => void;
+  setGlobalUnit: (unit: UnitSystem) => void;
+  setShowHoverData: (show: boolean) => void;
+  setApplyMaterialToAllConduits: (val: boolean) => void;
+  setElementUnit: (id: string, kind: 'node' | 'edge', newUnit: UnitSystem) => void;
+  updateHSchedule: (number: number, points: { time: number; head: number | string }[]) => void;
+  addHSchedule: (number: number) => void;
+  updateQSchedule: (scheduleNumber: number, points: { time: number; flow: number | string }[]) => void;
+  toggleNodeSelection: (nodeId: string) => void;
+  setAllNodesSelected: (selected: boolean) => void;
+  recomputeNodeOrderErrors: () => void;
+  undo: () => void;
+  redo: () => void;
+  saveToHistory: () => void;
+}
+
+let idCounter = 1;
+const getId = () => `${idCounter++}`;
+
+export const useNetworkStore = create<NetworkState>((set, get) => ({
+  nodes: [],
+  edges: [],
+  hSchedules: [],
+  qSchedules: {},
+  selectedElementId: null,
+  selectedElementType: null,
+  computationalParams: {
+    stages: [{
+      dtcomp: 0.01,
+      dtout: 0.1,
+      tmax: 500.0,
+    }],
+    accutest: 'NONE',
+    includeAccutest: true,
+  },
+  outputRequests: [],
+  snapshotTimes: [],
+  isLocked: false,
+  projectName: "Untitled Network",
+  projectNameError: null,
+  loadedFileHandle: null,
+  globalUnit: 'FPS',
+  showHoverData: true,
+  applyMaterialToAllConduits: false,
+  nodeSelectionSet: new Set(),
+  pcharData: {},
+  tcharData: {},
+  vSchedules: {},
+  nodeOrderErrorIds: [],
+  history: {
+    past: [],
+    future: [],
+  },
+
+  setApplyMaterialToAllConduits: (val: boolean) => {
+    set({ applyMaterialToAllConduits: val });
+  },
+
+  setShowHoverData: (show: boolean) => {
+    set({ showHoverData: show });
+  },
+
+  setGlobalUnit: (unit: UnitSystem) => {
+    get().saveToHistory();
+    const state = get();
+    const oldUnit = state.globalUnit;
+    
+    if (oldUnit === unit) return;
+
+    const SI_TO_FPS = {
+      length: 3.28084,
+      diameter: 3.28084,
+      elevation: 3.28084,
+      celerity: 3.28084,
+      area: 10.7639,
+      flow: 35.3147,
+      pressure: 1 / 6894.76, // Pa to psi
+    };
+
+    const convertValue = (value: number | string, from: UnitSystem, to: UnitSystem, type: keyof typeof SI_TO_FPS) => {
+      const numValue = typeof value === 'string' ? parseFloat(value) : value;
+      if (isNaN(numValue)) return value;
+      if (from === to) return numValue;
+      const factor = SI_TO_FPS[type] || 1;
+      const result = to === 'FPS' ? numValue * factor : numValue / factor;
+      return parseFloat(result.toPrecision(10));
+    };
+
+    const fieldMapping: Record<string, keyof typeof SI_TO_FPS> = {
+      length: 'length',
+      diameter: 'diameter',
+      elevation: 'elevation',
+      reservoirElevation: 'elevation',
+      tankTop: 'elevation',
+      tankBottom: 'elevation',
+      topElevation: 'elevation',
+      bottomElevation: 'elevation',
+      distance: 'length',
+      celerity: 'celerity',
+      area: 'area',
+      initialWaterLevel: 'elevation',
+      riserDiameter: 'diameter',
+      riserTop: 'elevation',
+      rq: 'flow',
+      rhead: 'elevation',
+      valveDiam: 'diameter',
+      turbineDiameter: 'diameter',
+    };
+
+    const cacheableFields = Object.keys(fieldMapping);
+
+    // Convert all nodes
+    const newNodes = state.nodes.map(node => {
+      const dataUpdate: any = {};
+      const nodeUnit = node.data?.unit || oldUnit;
+      if (nodeUnit === unit) {
+        if (node.data?.unit) dataUpdate.unit = undefined;
+        return Object.keys(dataUpdate).length > 0
+          ? { ...node, data: { ...node.data, ...dataUpdate } }
+          : node;
+      }
+
+      // Save current values into cache for oldUnit
+      const existingCache: UnitCache = (node.data?._unitCache as UnitCache) || {};
+      const savedForOldUnit: Record<string, any> = {};
+      cacheableFields.forEach(key => {
+        const val = (node.data as any)?.[key];
+        if (val !== undefined && val !== null && val !== '') {
+          savedForOldUnit[key] = val;
+        }
+      });
+      if (node.data?.schedulePoints) {
+        savedForOldUnit.schedulePoints = JSON.parse(JSON.stringify(node.data.schedulePoints));
+      }
+      const newCache: UnitCache = {
+        ...existingCache,
+        [nodeUnit]: { ...(existingCache[nodeUnit] || {}), ...savedForOldUnit },
+      };
+
+      // Use the cached target value when it round-trips back to the current
+      // value via math conversion (preserves user-typed exact numbers across
+      // unit toggles); otherwise fall back to a fresh math conversion so
+      // stale or copied caches can't freeze the displayed value.
+      const cachedTarget: Record<string, any> = newCache[unit] || {};
+      const isCacheConsistent = (key: string, currentNum: number, type: keyof typeof SI_TO_FPS) => {
+        const cached = cachedTarget[key];
+        if (cached === undefined || cached === null || cached === '') return false;
+        const cachedNum = typeof cached === 'string' ? parseFloat(cached) : cached;
+        if (isNaN(cachedNum)) return false;
+        const projected = convertValue(cachedNum, unit, nodeUnit, type) as number;
+        const tol = Math.max(Math.abs(currentNum) * 1e-4, 1e-6);
+        return Math.abs((projected as number) - currentNum) <= tol;
+      };
+
+      Object.entries(node.data || {}).forEach(([key, value]) => {
+        if (!fieldMapping[key]) return;
+        const numCurrent = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : NaN);
+        if (isNaN(numCurrent)) return;
+        if (isCacheConsistent(key, numCurrent, fieldMapping[key])) {
+          dataUpdate[key] = cachedTarget[key];
+        } else {
+          dataUpdate[key] = convertValue(value as any, nodeUnit, unit, fieldMapping[key]);
+        }
+      });
+
+      // Handle schedulePoints — math-convert per-point.
+      if (node.data?.schedulePoints) {
+        dataUpdate.schedulePoints = (node.data.schedulePoints as any[]).map(p => ({
+          ...p,
+          flow: convertValue(p.flow, nodeUnit, unit, 'flow')
+        }));
+      }
+
+      if (node.data?.unit) dataUpdate.unit = undefined;
+      dataUpdate._unitCache = newCache;
+
+      return { ...node, data: { ...node.data, ...dataUpdate } };
+    });
+
+    // Convert all edges
+    const newEdges = state.edges.map(edge => {
+      const dataUpdate: any = {};
+      const edgeUnit = edge.data?.unit || oldUnit;
+      if (edgeUnit === unit) {
+        if (edge.data?.unit) dataUpdate.unit = undefined;
+        return Object.keys(dataUpdate).length > 0
+          ? { ...edge, data: { ...edge.data, ...dataUpdate } }
+          : edge;
+      }
+
+      // Save current values into cache for oldUnit
+      const existingCache: UnitCache = (edge.data?._unitCache as UnitCache) || {};
+      const savedForOldUnit: Record<string, any> = {};
+      cacheableFields.forEach(key => {
+        const val = (edge.data as any)?.[key];
+        if (val !== undefined && val !== null && val !== '') {
+          savedForOldUnit[key] = val;
+        }
+      });
+      const newCache: UnitCache = {
+        ...existingCache,
+        [edgeUnit]: { ...(existingCache[edgeUnit] || {}), ...savedForOldUnit },
+      };
+
+      // Use the cached target value when it round-trips back to the current
+      // value via math conversion (preserves user-typed exact numbers across
+      // unit toggles); otherwise fall back to a fresh math conversion so
+      // stale or copied caches can't freeze the displayed value.
+      const cachedTargetEdge: Record<string, any> = newCache[unit] || {};
+      const isCacheConsistentEdge = (key: string, currentNum: number, type: keyof typeof SI_TO_FPS) => {
+        const cached = cachedTargetEdge[key];
+        if (cached === undefined || cached === null || cached === '') return false;
+        const cachedNum = typeof cached === 'string' ? parseFloat(cached) : cached;
+        if (isNaN(cachedNum)) return false;
+        const projected = convertValue(cachedNum, unit, edgeUnit, type) as number;
+        const tol = Math.max(Math.abs(currentNum) * 1e-4, 1e-6);
+        return Math.abs((projected as number) - currentNum) <= tol;
+      };
+
+      Object.entries(edge.data || {}).forEach(([key, value]) => {
+        if (!fieldMapping[key]) return;
+        const numCurrent = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : NaN);
+        if (isNaN(numCurrent)) return;
+        if (isCacheConsistentEdge(key, numCurrent, fieldMapping[key])) {
+          dataUpdate[key] = cachedTargetEdge[key];
+        } else {
+          dataUpdate[key] = convertValue(value as any, edgeUnit, unit, fieldMapping[key]);
+        }
+      });
+
+      // pipeE (Pa ↔ psi) and pipeWT (m ↔ ft): same cache-consistency policy.
+      if (edge.data?.pipeE != null && edge.data.pipeE !== '') {
+        const val = typeof edge.data.pipeE === 'string' ? parseFloat(edge.data.pipeE) : edge.data.pipeE;
+        if (!isNaN(val as number)) {
+          dataUpdate.pipeE = isCacheConsistentEdge('pipeE', val as number, 'pressure')
+            ? cachedTargetEdge['pipeE']
+            : convertValue(val as any, edgeUnit, unit, 'pressure');
+        }
+      }
+      if (edge.data?.pipeWT != null && edge.data.pipeWT !== '') {
+        const val = typeof edge.data.pipeWT === 'string' ? parseFloat(edge.data.pipeWT) : edge.data.pipeWT;
+        if (!isNaN(val as number)) {
+          dataUpdate.pipeWT = isCacheConsistentEdge('pipeWT', val as number, 'diameter')
+            ? cachedTargetEdge['pipeWT']
+            : convertValue(val as any, edgeUnit, unit, 'diameter');
+        }
+      }
+
+      if (edge.data?.unit) dataUpdate.unit = undefined;
+      dataUpdate._unitCache = newCache;
+
+      return { ...edge, data: { ...edge.data, ...dataUpdate } };
+    });
+
+    // Convert qSchedules — take converted values from nodes (first match per scheduleNumber),
+    // then math-convert any scheduleNumbers not covered by any node.
+    const newQSchedules: Record<number, { time: number; flow: number | string }[]> = {};
+    newNodes.forEach((node: WhamoNode) => {
+      if (node.type === 'flowBoundary' && node.data?.scheduleNumber !== undefined && node.data?.schedulePoints) {
+        const num = Number(node.data.scheduleNumber);
+        if (!newQSchedules[num]) {
+          newQSchedules[num] = node.data.schedulePoints as { time: number; flow: number | string }[];
+        }
+      }
+    });
+    Object.entries(state.qSchedules).forEach(([numStr, points]) => {
+      const num = Number(numStr);
+      if (!newQSchedules[num]) {
+        newQSchedules[num] = (points as any[]).map(p => ({
+          ...p,
+          flow: convertValue(p.flow, oldUnit, unit, 'flow'),
+        }));
+      }
+    });
+
+    set({ 
+      globalUnit: unit,
+      nodes: newNodes as WhamoNode[],
+      edges: newEdges as WhamoEdge[],
+      qSchedules: newQSchedules,
+    });
+  },
+
+  setElementUnit: (id: string, kind: 'node' | 'edge', newUnit: UnitSystem) => {
+    get().saveToHistory();
+    const state = get();
+
+    const SI_TO_FPS = {
+      length: 3.28084,
+      diameter: 3.28084,
+      elevation: 3.28084,
+      celerity: 3.28084,
+      area: 10.7639,
+      flow: 35.3147,
+      pressure: 1 / 6894.76,
+    };
+
+    const convertValue = (value: number | string, from: UnitSystem, to: UnitSystem, type: keyof typeof SI_TO_FPS) => {
+      const numValue = typeof value === 'string' ? parseFloat(value) : value;
+      if (isNaN(numValue)) return value;
+      if (from === to) return numValue;
+      const factor = SI_TO_FPS[type] || 1;
+      const result = to === 'FPS' ? numValue * factor : numValue / factor;
+      return parseFloat(result.toPrecision(10));
+    };
+
+    const fieldMapping: Record<string, keyof typeof SI_TO_FPS> = {
+      length: 'length',
+      diameter: 'diameter',
+      elevation: 'elevation',
+      reservoirElevation: 'elevation',
+      tankTop: 'elevation',
+      tankBottom: 'elevation',
+      topElevation: 'elevation',
+      bottomElevation: 'elevation',
+      distance: 'length',
+      celerity: 'celerity',
+      area: 'area',
+      initialWaterLevel: 'elevation',
+      riserDiameter: 'diameter',
+      riserTop: 'elevation',
+      rq: 'flow',
+      rhead: 'elevation',
+      valveDiam: 'diameter',
+      turbineDiameter: 'diameter',
+    };
+
+    const cacheableFields = Object.keys(fieldMapping);
+
+    if (kind === 'node') {
+      const newNodes = state.nodes.map(node => {
+        if (node.id !== id) return node;
+        const oldUnit: UnitSystem = (node.data?.unit as UnitSystem) || state.globalUnit;
+        if (oldUnit === newUnit) return node;
+
+        const existingCache: UnitCache = (node.data?._unitCache as UnitCache) || {};
+        const savedForOldUnit: Record<string, any> = {};
+        cacheableFields.forEach(key => {
+          const val = (node.data as any)?.[key];
+          if (val !== undefined && val !== null && val !== '') savedForOldUnit[key] = val;
+        });
+        if (node.data?.schedulePoints) {
+          savedForOldUnit.schedulePoints = JSON.parse(JSON.stringify(node.data.schedulePoints));
+        }
+        const newCache: UnitCache = {
+          ...existingCache,
+          [oldUnit]: { ...(existingCache[oldUnit] || {}), ...savedForOldUnit },
+        };
+
+        const dataUpdate: any = { unit: newUnit };
+        // Use cached target value when consistent with current value (preserves
+        // exact user-typed numbers across round trips); otherwise math-convert.
+        const cachedTarget: Record<string, any> = newCache[newUnit] || {};
+        const isCacheConsistent = (key: string, currentNum: number, type: keyof typeof SI_TO_FPS) => {
+          const cached = cachedTarget[key];
+          if (cached === undefined || cached === null || cached === '') return false;
+          const cachedNum = typeof cached === 'string' ? parseFloat(cached) : cached;
+          if (isNaN(cachedNum)) return false;
+          const projected = convertValue(cachedNum, newUnit, oldUnit, type) as number;
+          const tol = Math.max(Math.abs(currentNum) * 1e-4, 1e-6);
+          return Math.abs((projected as number) - currentNum) <= tol;
+        };
+
+        Object.entries(node.data || {}).forEach(([key, value]) => {
+          if (!fieldMapping[key]) return;
+          const numCurrent = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : NaN);
+          if (isNaN(numCurrent)) return;
+          if (isCacheConsistent(key, numCurrent, fieldMapping[key])) {
+            dataUpdate[key] = cachedTarget[key];
+          } else {
+            dataUpdate[key] = convertValue(value as any, oldUnit, newUnit, fieldMapping[key]);
+          }
+        });
+
+        if (node.data?.schedulePoints) {
+          dataUpdate.schedulePoints = (node.data.schedulePoints as any[]).map(p => ({
+            ...p,
+            flow: convertValue(p.flow, oldUnit, newUnit, 'flow'),
+          }));
+        }
+
+        dataUpdate._unitCache = newCache;
+        return { ...node, data: { ...node.data, ...dataUpdate } };
+      });
+      set({ nodes: newNodes as WhamoNode[] });
+    } else {
+      const newEdges = state.edges.map(edge => {
+        if (edge.id !== id) return edge;
+        const oldUnit: UnitSystem = (edge.data?.unit as UnitSystem) || state.globalUnit;
+        if (oldUnit === newUnit) return edge;
+
+        const existingCache: UnitCache = (edge.data?._unitCache as UnitCache) || {};
+        const savedForOldUnit: Record<string, any> = {};
+        cacheableFields.forEach(key => {
+          const val = (edge.data as any)?.[key];
+          if (val !== undefined && val !== null && val !== '') savedForOldUnit[key] = val;
+        });
+        const newCache: UnitCache = {
+          ...existingCache,
+          [oldUnit]: { ...(existingCache[oldUnit] || {}), ...savedForOldUnit },
+        };
+
+        const dataUpdate: any = { unit: newUnit };
+        // Use cached target value when consistent with current value (preserves
+        // exact user-typed numbers across round trips); otherwise math-convert.
+        const cachedTarget: Record<string, any> = newCache[newUnit] || {};
+        const isCacheConsistent = (key: string, currentNum: number, type: keyof typeof SI_TO_FPS) => {
+          const cached = cachedTarget[key];
+          if (cached === undefined || cached === null || cached === '') return false;
+          const cachedNum = typeof cached === 'string' ? parseFloat(cached) : cached;
+          if (isNaN(cachedNum)) return false;
+          const projected = convertValue(cachedNum, newUnit, oldUnit, type) as number;
+          const tol = Math.max(Math.abs(currentNum) * 1e-4, 1e-6);
+          return Math.abs((projected as number) - currentNum) <= tol;
+        };
+
+        Object.entries(edge.data || {}).forEach(([key, value]) => {
+          if (!fieldMapping[key]) return;
+          const numCurrent = typeof value === 'string' ? parseFloat(value) : (typeof value === 'number' ? value : NaN);
+          if (isNaN(numCurrent)) return;
+          if (isCacheConsistent(key, numCurrent, fieldMapping[key])) {
+            dataUpdate[key] = cachedTarget[key];
+          } else {
+            dataUpdate[key] = convertValue(value as any, oldUnit, newUnit, fieldMapping[key]);
+          }
+        });
+
+        if (edge.data?.pipeE != null && edge.data.pipeE !== '') {
+          const val = typeof edge.data.pipeE === 'string' ? parseFloat(edge.data.pipeE) : edge.data.pipeE as number;
+          if (!isNaN(val)) dataUpdate.pipeE = convertValue(val, oldUnit, newUnit, 'pressure');
+        }
+        if (edge.data?.pipeWT != null && edge.data.pipeWT !== '') {
+          const val = typeof edge.data.pipeWT === 'string' ? parseFloat(edge.data.pipeWT) : edge.data.pipeWT as number;
+          if (!isNaN(val)) dataUpdate.pipeWT = convertValue(val, oldUnit, newUnit, 'diameter');
+        }
+
+        dataUpdate._unitCache = newCache;
+        return { ...edge, data: { ...edge.data, ...dataUpdate } };
+      });
+      set({ edges: newEdges as WhamoEdge[] });
+    }
+  },
+
+  onNodesChange: (changes: NodeChange[]) => {
+    // Only save to history for non-position changes (like deletions or specific types of updates)
+    // To avoid bloating history with every drag movement
+    const hasSignificantChange = changes.some(c => c.type === 'remove' || c.type === 'add');
+    if (hasSignificantChange) get().saveToHistory();
+
+    set({
+      nodes: applyNodeChanges(changes, get().nodes as any) as WhamoNode[],
+    });
+  },
+
+  onEdgesChange: (changes: EdgeChange[]) => {
+    const hasSignificantChange = changes.some(c => c.type === 'remove' || c.type === 'add');
+    if (hasSignificantChange) get().saveToHistory();
+
+    const updatedEdges = applyEdgeChanges(changes, get().edges as any) as WhamoEdge[];
+    set({ edges: updatedEdges });
+
+    // Auto-downgrade junctions back to plain nodes when they drop to ≤2 connections
+    if (changes.some(c => c.type === 'remove')) {
+      const currentNodes = get().nodes;
+      const nodeIdsToDowngrade: string[] = [];
+
+      for (const n of currentNodes) {
+        if (n.type !== 'junction') continue;
+        const degree = updatedEdges.filter(
+          e => e.source === n.id || e.target === n.id
+        ).length;
+        if (degree <= 2) nodeIdsToDowngrade.push(n.id);
+      }
+
+      if (nodeIdsToDowngrade.length > 0) {
+        set({
+          nodes: currentNodes.map(n =>
+            nodeIdsToDowngrade.includes(n.id)
+              ? {
+                  ...n,
+                  type: 'node' as NodeType,
+                  data: { ...n.data, type: 'node' as NodeType },
+                }
+              : n
+          ),
+        });
+      }
+    }
+  },
+
+  onConnect: (connection: Connection) => {
+    get().saveToHistory();
+    const id = getId();
+    const edges = get().edges;
+    const conduitCount = edges.filter(e => e.data?.type === 'conduit').length;
+    const connectionLabel = `C${conduitCount + 1}`;
+
+    set({
+      edges: addEdge(
+        {
+          ...connection,
+          id,
+          type: 'connection',
+          style: { stroke: '#000000', strokeWidth: 2 },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: '#000000',
+          },
+          data: { 
+            label: connectionLabel, 
+            type: 'conduit',
+          }
+        },
+        get().edges
+      ),
+    });
+
+    // Auto-upgrade plain nodes to junctions when they gain more than 2 connections
+    {
+      const currentEdges = get().edges;
+      const currentNodes = get().nodes;
+      const nodeIdsToUpgrade: string[] = [];
+
+      for (const n of currentNodes) {
+        if (n.type !== 'node') continue;
+        const degree = currentEdges.filter(
+          e => e.source === n.id || e.target === n.id
+        ).length;
+        if (degree > 2) nodeIdsToUpgrade.push(n.id);
+      }
+
+      if (nodeIdsToUpgrade.length > 0) {
+        set({
+          nodes: currentNodes.map(n =>
+            nodeIdsToUpgrade.includes(n.id)
+              ? {
+                  ...n,
+                  type: 'junction' as NodeType,
+                  data: { ...n.data, type: 'junction' as NodeType },
+                }
+              : n
+          ),
+        });
+      }
+    }
+
+    // Auto-select output requests for the new edge
+    const availableVars = ["Q", "HEAD", "ELEV", "VEL", "PRESS", "PIEZHEAD"];
+    const requestTypes: ("HISTORY" | "PLOT" | "SPREADSHEET")[] = ["HISTORY", "PLOT", "SPREADSHEET"];
+    const newRequests: OutputRequest[] = requestTypes.map(reqType => ({
+      id: `req-${Date.now()}-${Math.random()}`,
+      elementId: id,
+      elementType: 'edge',
+      requestType: reqType,
+      variables: [...availableVars]
+    }));
+    
+    set({ outputRequests: [...get().outputRequests, ...newRequests] });
+    get().recomputeNodeOrderErrors();
+  },
+
+  addNode: (type, position) => {
+    get().saveToHistory();
+    const id = getId();
+    let initialData: NodeData = { label: '', type };
+
+    // Pumps and check valves are hydraulic elements, not topological nodes.
+    // Only real nodes participate in the sequential node-number pool.
+    const realNodeTypes = new Set(['reservoir', 'node', 'junction', 'surgeTank', 'flowBoundary']);
+    const elementTypes = new Set(['pump', 'checkValve']);
+
+    // Compute the next gap-free sequential number using only real-node numbers.
+    const realNodeNums = get().nodes
+      .filter(n => realNodeTypes.has(n.type!) && n.data?.nodeNumber !== undefined)
+      .map(n => n.data.nodeNumber as number);
+    const realNumSet = new Set(realNodeNums);
+    let nextNodeNum = 1;
+    while (realNumSet.has(nextNodeNum)) nextNodeNum++;
+
+    let newPumpTypeToInit: number | null = null;
+
+    switch (type) {
+      case 'reservoir':
+        initialData = { ...initialData, label: 'HW', nodeNumber: nextNodeNum };
+        break;
+      case 'node':
+        initialData = { ...initialData, label: `Node ${nextNodeNum}`, nodeNumber: nextNodeNum };
+        break;
+      case 'junction':
+        initialData = { ...initialData, label: `Node ${nextNodeNum}`, nodeNumber: nextNodeNum };
+        break;
+      case 'surgeTank':
+        initialData = { ...initialData, label: 'ST', nodeNumber: nextNodeNum };
+        break;
+      case 'flowBoundary': {
+        const existingFBNums = get().nodes
+          .filter(n => n.type === 'flowBoundary' && n.data?.scheduleNumber !== undefined && n.data?.scheduleNumber !== '')
+          .map(n => n.data.scheduleNumber as number);
+        const scheduleNumber = existingFBNums.length > 0 ? Math.max(...existingFBNums) + 1 : 1;
+        const existingQPoints = get().qSchedules[scheduleNumber] || [];
+        initialData = { ...initialData, label: `FB${id}`, nodeNumber: nextNodeNum, scheduleNumber, schedulePoints: existingQPoints };
+        break;
+      }
+      case 'pump': {
+        const pumpCount = get().nodes.filter(n => n.type === 'pump').length + 1;
+        const existingTypes = Object.keys(get().pcharData).map(Number);
+        newPumpTypeToInit = existingTypes.length > 0 ? Math.max(...existingTypes) + 1 : 1;
+        // Pumps have no nodeNumber — their INP position is computed at generation time
+        initialData = { ...initialData, label: `P${pumpCount}`, pumpStatus: 'ACTIVE', pumpType: newPumpTypeToInit };
+        break;
+      }
+      case 'checkValve': {
+        const cvCount = get().nodes.filter(n => n.type === 'checkValve').length + 1;
+        // Check valves have no nodeNumber — their INP position is computed at generation time
+        initialData = { ...initialData, label: `VC${cvCount}`, valveStatus: 'OPEN' };
+        break;
+      }
+      case 'turbine': {
+        const turbCount = get().nodes.filter(n => n.type === 'turbine').length + 1;
+        const existingTcharTypes = Object.keys(get().tcharData).map(Number);
+        const newTcharType = existingTcharTypes.length > 0 ? Math.max(...existingTcharTypes) + 1 : 1;
+        initialData = {
+          ...initialData,
+          label: `T${turbCount}`,
+          turbineType: newTcharType,
+          syncSpeed: 0,
+          wr2: 0,
+          turbFriction: 0,
+          windage: 0,
+          operationMode: 'TURBINE',
+          vScheduleNumber: 1,
+        };
+        if (!get().tcharData[newTcharType]) {
+          const defaultTchar: TcharType = { gate: [], head: [], qMatrix: [], effMatrix: [] };
+          set({ tcharData: { ...get().tcharData, [newTcharType]: defaultTchar } });
+        }
+        break;
+      }
+    }
+
+    const newNode: WhamoNode = {
+      id,
+      type,
+      position,
+      data: initialData,
+    };
+
+    set({ nodes: [...get().nodes, newNode] });
+
+    if (newPumpTypeToInit !== null) {
+      const defaultPchar: PcharType = {
+        sratio: [],
+        qratio: [],
+        hratio: [],
+        tratio: [],
+      };
+      set({ pcharData: { ...get().pcharData, [newPumpTypeToInit]: defaultPchar } });
+    }
+    
+    // Auto-select output requests for the new node
+    const availableVars = ["Q", "HEAD", "ELEV", "VEL", "PRESS", "PIEZHEAD"];
+    const requestTypes: ("HISTORY" | "PLOT" | "SPREADSHEET")[] = ["HISTORY", "PLOT", "SPREADSHEET"];
+    const newRequests: OutputRequest[] = [];
+    
+    requestTypes.forEach(reqType => {
+      // Add Node request
+      newRequests.push({
+        id: `req-${Date.now()}-${Math.random()}`,
+        elementId: id,
+        elementType: 'node',
+        isElement: false,
+        requestType: reqType,
+        variables: [...availableVars]
+      });
+
+      // If it's a surge tank, pump, checkValve, or turbine, also add the Element request
+      if (type === 'surgeTank' || type === 'pump' || type === 'checkValve' || type === 'turbine') {
+        newRequests.push({
+          id: `req-${Date.now()}-${Math.random()}`,
+          elementId: id,
+          elementType: 'node',
+          isElement: true,
+          requestType: reqType,
+          variables: [...availableVars]
+        });
+      }
+    });
+    
+    set({ outputRequests: [...get().outputRequests, ...newRequests] });
+  },
+
+  addEdgeElement: (type, sourceId, targetId) => {
+    get().saveToHistory();
+    const id = getId();
+    const state = get();
+
+    let initialData: EdgeData;
+
+    if (type === 'pump') {
+      const pumpCount = state.edges.filter(e => e.data?.type === 'pump').length
+        + state.nodes.filter(n => n.type === 'pump').length + 1;
+      const existingTypes = Object.keys(state.pcharData).map(Number);
+      const newPumpType = existingTypes.length > 0 ? Math.max(...existingTypes) + 1 : 1;
+      initialData = {
+        label: `P${pumpCount}`,
+        type: 'pump',
+        pumpStatus: 'ACTIVE',
+        pumpType: newPumpType,
+        rq: 0,
+        rhead: 0,
+        rspeed: 0,
+        rtorque: 0,
+        wr2: 0,
+      };
+      const defaultPchar: PcharType = { sratio: [], qratio: [], hratio: [], tratio: [] };
+      set({ pcharData: { ...state.pcharData, [newPumpType]: defaultPchar } });
+    } else if (type === 'checkValve') {
+      const cvCount = state.edges.filter(e => e.data?.type === 'checkValve').length
+        + state.nodes.filter(n => n.type === 'checkValve').length + 1;
+      initialData = {
+        label: `VC${cvCount}`,
+        type: 'checkValve',
+        valveStatus: 'OPEN',
+      };
+    } else {
+      const turbCount = state.edges.filter(e => e.data?.type === 'turbine').length
+        + state.nodes.filter(n => n.type === 'turbine').length + 1;
+      const existingTcharTypes = Object.keys(state.tcharData).map(Number);
+      const newTcharType = existingTcharTypes.length > 0 ? Math.max(...existingTcharTypes) + 1 : 1;
+      initialData = {
+        label: `T${turbCount}`,
+        type: 'turbine',
+        turbineType: newTcharType,
+        syncSpeed: 0,
+        wr2: 0,
+        turbFriction: 0,
+        windage: 0,
+        operationMode: 'TURBINE',
+        vScheduleNumber: 1,
+      };
+      if (!state.tcharData[newTcharType]) {
+        const defaultTchar: TcharType = { gate: [], head: [], qMatrix: [], effMatrix: [] };
+        set({ tcharData: { ...get().tcharData, [newTcharType]: defaultTchar } });
+      }
+    }
+
+    const strokeColor = '#000000';
+
+    const sourceNode = get().nodes.find(n => n.id === sourceId);
+    const targetNode = get().nodes.find(n => n.id === targetId);
+    // Source handles: s-top/s-bottom/s-left/s-right
+    // Target handles: t-top/t-bottom/t-left/t-right
+    let sourceHandle = 's-right';
+    let targetHandle = 't-left';
+    if (sourceNode && targetNode) {
+      const dx = targetNode.position.x - sourceNode.position.x;
+      const dy = targetNode.position.y - sourceNode.position.y;
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+      if (angle >= -45 && angle < 45) {
+        sourceHandle = 's-right'; targetHandle = 't-left';
+      } else if (angle >= 45 && angle < 135) {
+        sourceHandle = 's-bottom'; targetHandle = 't-top';
+      } else if (angle >= 135 || angle < -135) {
+        sourceHandle = 's-left'; targetHandle = 't-right';
+      } else {
+        sourceHandle = 's-top'; targetHandle = 't-bottom';
+      }
+    }
+
+    const newEdge: WhamoEdge = {
+      id,
+      source: sourceId,
+      target: targetId,
+      sourceHandle,
+      targetHandle,
+      type: 'connection',
+      style: { stroke: strokeColor, strokeWidth: 2.5 },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: strokeColor,
+      },
+      data: initialData,
+    };
+
+    set({ edges: [...get().edges, newEdge] });
+
+    const availableVars = ['Q', 'HEAD', 'ELEV', 'VEL', 'PRESS', 'PIEZHEAD'];
+    const requestTypes: ('HISTORY' | 'PLOT' | 'SPREADSHEET')[] = ['HISTORY', 'PLOT', 'SPREADSHEET'];
+    const newRequests: OutputRequest[] = requestTypes.map(reqType => ({
+      id: `req-${Date.now()}-${Math.random()}`,
+      elementId: id,
+      elementType: 'edge',
+      isElement: true,
+      requestType: reqType,
+      variables: [...availableVars],
+    }));
+    set({ outputRequests: [...get().outputRequests, ...newRequests] });
+  },
+
+  updateNodeData: (id, data) => {
+    get().saveToHistory();
+    set({
+      nodes: get().nodes.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, ...data } } as WhamoNode : node
+      ),
+    });
+    if ('nodeNumber' in data) get().recomputeNodeOrderErrors();
+  },
+
+  updateEdgeData: (id, data) => {
+    get().saveToHistory();
+    set({
+      edges: get().edges.map((edge) => {
+        if (edge.id === id) {
+          const oldType = edge.data?.type;
+          const newType = data.type || oldType;
+          let label = data.label || edge.data?.label || "";
+
+          // If type changed, recalculate label
+          if (data.type && data.type !== oldType) {
+            const sameTypeEdges = get().edges.filter(e => e.data?.type === data.type && e.id !== id);
+            const prefix = data.type === 'conduit' ? 'C' : 'D';
+            label = `${prefix}${sameTypeEdges.length + 1}`;
+          }
+
+          const newData = { ...edge.data, ...data, label };
+          let style = edge.style;
+          let markerEnd = edge.markerEnd;
+
+          if (newType === 'conduit') {
+            style = { stroke: '#000000', strokeWidth: 2 };
+            markerEnd = { type: MarkerType.ArrowClosed, color: '#000000' };
+          } else if (newType === 'dummy') {
+            style = { stroke: '#000000', strokeWidth: 2, strokeDasharray: '5,5' };
+            markerEnd = { type: MarkerType.ArrowClosed, color: '#000000' };
+          } else if (newType === 'pump') {
+            style = { stroke: '#000000', strokeWidth: 2 };
+            markerEnd = { type: MarkerType.ArrowClosed, color: '#000000' };
+          } else if (newType === 'checkValve') {
+            style = { stroke: '#000000', strokeWidth: 2 };
+            markerEnd = { type: MarkerType.ArrowClosed, color: '#000000' };
+          } else if (newType === 'turbine') {
+            style = { stroke: '#000000', strokeWidth: 2 };
+            markerEnd = { type: MarkerType.ArrowClosed, color: '#000000' };
+          }
+
+          return { 
+            ...edge, 
+            data: newData as EdgeData,
+            style,
+            markerEnd: markerEnd as any
+          };
+        }
+        return edge;
+      }),
+    });
+  },
+
+  deleteElement: (id, type) => {
+    get().saveToHistory();
+    const state = get();
+    if (type === 'node') {
+      const remainingEdges = state.edges.filter(e => e.source !== id && e.target !== id);
+
+      // Auto-downgrade neighboring junctions that drop to ≤2 connections after this node is removed
+      const nodeIdsToDowngrade: string[] = [];
+      for (const n of state.nodes) {
+        if (n.id === id || n.type !== 'junction') continue;
+        const degree = remainingEdges.filter(e => e.source === n.id || e.target === n.id).length;
+        if (degree <= 2) nodeIdsToDowngrade.push(n.id);
+      }
+
+      const remainingNodes = state.nodes
+        .filter(n => n.id !== id)
+        .map(n =>
+          nodeIdsToDowngrade.includes(n.id)
+            ? { ...n, type: 'node' as NodeType, data: { ...n.data, type: 'node' as NodeType } }
+            : n
+        );
+
+      set({ 
+        nodes: remainingNodes, 
+        edges: remainingEdges,
+        selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+        selectedElementType: state.selectedElementId === id ? null : state.selectedElementType
+      });
+    } else {
+      const remainingEdges = state.edges.filter(e => e.id !== id);
+
+      // Auto-downgrade junctions back to plain nodes when they drop to ≤2 connections
+      const nodeIdsToDowngrade: string[] = [];
+      for (const n of state.nodes) {
+        if (n.type !== 'junction') continue;
+        const degree = remainingEdges.filter(e => e.source === n.id || e.target === n.id).length;
+        if (degree <= 2) nodeIdsToDowngrade.push(n.id);
+      }
+
+      const updatedNodes = nodeIdsToDowngrade.length > 0
+        ? state.nodes.map(n =>
+            nodeIdsToDowngrade.includes(n.id)
+              ? { ...n, type: 'node' as NodeType, data: { ...n.data, type: 'node' as NodeType } }
+              : n
+          )
+        : state.nodes;
+
+      set({ 
+        nodes: updatedNodes,
+        edges: remainingEdges,
+        selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+        selectedElementType: state.selectedElementId === id ? null : state.selectedElementType
+      });
+    }
+  },
+
+  selectElement: (id, type) => {
+    set({ selectedElementId: id, selectedElementType: type });
+  },
+
+  loadNetwork: (nodes, edges, params, requests, projectName, fileHandle, pcharData, snapshotTimes, nodeSelectionSet, tcharData, vSchedules) => {
+    const maxId = Math.max(
+      ...nodes.map(n => parseInt(n.id) || 0),
+      ...edges.map(e => parseInt(e.id) || 0),
+      0
+    );
+    idCounter = maxId + 1;
+    
+    // Flatten variableData for conduits if it exists; always normalize markerEnd to black
+    const processedEdges = edges.map(edge => {
+      const base = {
+        ...edge,
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#000000' } as any,
+        style: { ...(edge.style as object || {}), stroke: '#000000', strokeWidth: 2 },
+      };
+      if (edge.data?.variableData) {
+        const { variableData, ...restData } = edge.data;
+        return {
+          ...base,
+          data: {
+            ...restData,
+            ...variableData,
+            variable: true
+          }
+        };
+      }
+      return base;
+    });
+    
+    // Convert all nodes
+    const processedNodes = nodes.map(node => {
+      // If the node is a reservoir and has schedulePoints in its data,
+      // but they aren't in the global hSchedules yet, we should extract them.
+      if (node.type === 'reservoir' && node.data?.mode === 'schedule' && node.data?.schedulePoints) {
+        const schedNum = node.data.hScheduleNumber || 1;
+        const points = node.data.schedulePoints as { time: number; head: number | string }[];
+        
+        // We'll update hSchedules later in the set() call, 
+        // but for now we just ensure the node data is consistent.
+      }
+      return node;
+    });
+
+    // Extract hSchedules from nodes if they exist there (legacy or specific export format)
+    const extractedHSchedules = [...((params as any)?.hSchedules || (params as any)?.content?.hSchedules || (params as any)?.content?.params?.hSchedules || [])];
+    
+    nodes.forEach(node => {
+      if (node.type === 'reservoir' && node.data?.mode === 'schedule' && node.data?.schedulePoints) {
+        const num = node.data.hScheduleNumber || 1;
+        if (!extractedHSchedules.find(s => s.number === num)) {
+          extractedHSchedules.push({
+            number: num,
+            points: node.data.schedulePoints
+          });
+        }
+      }
+    });
+    
+    // Extract qSchedules from saved params or migrate from per-node schedulePoints
+    const savedQSchedules: Record<number, { time: number; flow: number | string }[]> =
+      (params as any)?.qSchedules || {};
+    const extractedQSchedules: Record<number, { time: number; flow: number | string }[]> = { ...savedQSchedules };
+    nodes.forEach(node => {
+      if (
+        node.type === 'flowBoundary' &&
+        node.data?.schedulePoints &&
+        Array.isArray(node.data.schedulePoints) &&
+        (node.data.schedulePoints as any[]).length > 0 &&
+        node.data?.scheduleNumber !== undefined
+      ) {
+        const num = Number(node.data.scheduleNumber);
+        if (!extractedQSchedules[num]) {
+          extractedQSchedules[num] = node.data.schedulePoints as { time: number; flow: number | string }[];
+        }
+      }
+    });
+
+    set({ 
+      nodes: processedNodes, 
+      edges: processedEdges, 
+      hSchedules: extractedHSchedules,
+      qSchedules: extractedQSchedules,
+      computationalParams: params || get().computationalParams,
+      outputRequests: requests || [],
+      snapshotTimes: snapshotTimes || [],
+      projectName: projectName || get().projectName,
+      loadedFileHandle: fileHandle || null,
+      pcharData: pcharData || {},
+      tcharData: tcharData || {},
+      vSchedules: vSchedules || {},
+      nodeSelectionSet: Array.isArray(nodeSelectionSet) ? new Set(nodeSelectionSet) : new Set(),
+      selectedElementId: null, 
+      selectedElementType: null 
+    });
+    get().recomputeNodeOrderErrors();
+  },
+
+  clearNetwork: () => {
+    get().saveToHistory();
+    set({ 
+      nodes: [], 
+      edges: [], 
+      hSchedules: [],
+      qSchedules: {},
+      pcharData: {},
+      tcharData: {},
+      vSchedules: {},
+      selectedElementId: null, 
+      selectedElementType: null, 
+      outputRequests: [],
+      snapshotTimes: [],
+      projectName: "Untitled Network",
+      loadedFileHandle: null
+    });
+    idCounter = 1;
+  },
+
+  updatePcharData: (pumpType, data) => {
+    const existing = get().pcharData;
+    set({ pcharData: { ...existing, [pumpType]: data } });
+  },
+
+  updateTcharData: (turbineType, data) => {
+    set({ tcharData: { ...get().tcharData, [turbineType]: data } });
+  },
+
+  addTcharType: (typeNum) => {
+    const existing = get().tcharData;
+    const existingNums = Object.keys(existing).map(Number);
+    const newNum = typeNum !== undefined
+      ? typeNum
+      : (existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1);
+    if (existing[newNum] !== undefined) return;
+    const defaultTchar: TcharType = { gate: [], head: [], qMatrix: [], effMatrix: [] };
+    set({ tcharData: { ...existing, [newNum]: defaultTchar } });
+  },
+
+  deleteTcharType: (typeNum) => {
+    const existing = { ...get().tcharData };
+    delete existing[typeNum];
+    set({ tcharData: existing });
+  },
+
+  updateVSchedule: (schedNum, points) => {
+    set({ vSchedules: { ...get().vSchedules, [schedNum]: points } });
+  },
+
+  addVSchedule: (schedNum) => {
+    if (get().vSchedules[schedNum] !== undefined) return;
+    set({ vSchedules: { ...get().vSchedules, [schedNum]: [] } });
+  },
+
+  deleteVSchedule: (schedNum) => {
+    const existing = { ...get().vSchedules };
+    delete existing[schedNum];
+    set({ vSchedules: existing });
+  },
+
+  autoSelectOutputRequests: () => {
+    const { nodes, edges } = get();
+    const availableVars = ["Q", "HEAD", "ELEV", "VEL", "PRESS", "PIEZHEAD"];
+    const requestTypes: ("HISTORY" | "PLOT" | "SPREADSHEET")[] = ["HISTORY", "PLOT", "SPREADSHEET"];
+    
+    const newRequests: OutputRequest[] = [];
+    
+    nodes.forEach(node => {
+      requestTypes.forEach(reqType => {
+        newRequests.push({
+          id: `req-${Date.now()}-${Math.random()}`,
+          elementId: node.id,
+          elementType: 'node',
+          requestType: reqType,
+          variables: [...availableVars]
+        });
+      });
+    });
+
+    edges.forEach(edge => {
+      requestTypes.forEach(reqType => {
+        newRequests.push({
+          id: `req-${Date.now()}-${Math.random()}`,
+          elementId: edge.id,
+          elementType: 'edge',
+          requestType: reqType,
+          variables: [...availableVars]
+        });
+      });
+    });
+
+    set({ outputRequests: newRequests });
+  },
+
+  updateComputationalParams: (params) => {
+    get().saveToHistory();
+    set({ computationalParams: { ...get().computationalParams, ...params } });
+  },
+
+  updateHSchedule: (number, points) => {
+    get().saveToHistory();
+    const { hSchedules } = get();
+    const existingIndex = hSchedules.findIndex(s => s.number === number);
+    if (existingIndex >= 0) {
+      const newSchedules = [...hSchedules];
+      newSchedules[existingIndex] = { number, points };
+      set({ hSchedules: newSchedules });
+    } else {
+      set({ hSchedules: [...hSchedules, { number, points }] });
+    }
+  },
+
+  addHSchedule: (number) => {
+    get().saveToHistory();
+    const { hSchedules } = get();
+    if (!hSchedules.find(s => s.number === number)) {
+      set({ hSchedules: [...hSchedules, { number, points: [] }] });
+    }
+  },
+
+  updateQSchedule: (scheduleNumber, points) => {
+    get().saveToHistory();
+    const state = get();
+    const newQSchedules = { ...state.qSchedules, [scheduleNumber]: points };
+    // Sync schedulePoints on every flowBoundary node that shares this scheduleNumber
+    const newNodes = state.nodes.map(node => {
+      if (node.type === 'flowBoundary' && Number(node.data?.scheduleNumber) === Number(scheduleNumber)) {
+        return { ...node, data: { ...node.data, schedulePoints: points } } as WhamoNode;
+      }
+      return node;
+    });
+    set({ qSchedules: newQSchedules, nodes: newNodes });
+  },
+
+  toggleNodeSelection: (nodeId: string) => {
+    const newSet = new Set(get().nodeSelectionSet);
+    if (newSet.has(nodeId)) {
+      newSet.delete(nodeId);
+    } else {
+      newSet.add(nodeId);
+    }
+    set({ nodeSelectionSet: newSet });
+  },
+
+  setAllNodesSelected: (selected: boolean) => {
+    if (selected) {
+      const nodeIds = new Set(get().nodes.map(n => (n.data.nodeNumber?.toString() || n.id)));
+      set({ nodeSelectionSet: nodeIds });
+    } else {
+      set({ nodeSelectionSet: new Set() });
+    }
+  },
+
+  recomputeNodeOrderErrors: () => {
+    const { nodes, edges } = get();
+    const errorIds = new Set(getNodeSequenceViolations(nodes, edges).map(violation => violation.id));
+    set({ nodeOrderErrorIds: [...errorIds] });
+  },
+
+  addOutputRequest: (request) => {
+    get().saveToHistory();
+    const id = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    set({ outputRequests: [...get().outputRequests, { ...request, id }] });
+  },
+
+  removeOutputRequest: (id) => {
+    get().saveToHistory();
+    set({ outputRequests: get().outputRequests.filter(r => r.id !== id) });
+  },
+
+  addSnapshotTime: (time) => {
+    set({ snapshotTimes: [...get().snapshotTimes, time] });
+  },
+
+  removeSnapshotTime: (index) => {
+    set({ snapshotTimes: get().snapshotTimes.filter((_, i) => i !== index) });
+  },
+
+  addPcharType: (typeNum) => {
+    const existing = get().pcharData;
+    const existingNums = Object.keys(existing).map(Number);
+    const newNum = typeNum !== undefined
+      ? typeNum
+      : (existingNums.length > 0 ? Math.max(...existingNums) + 1 : 1);
+    if (existing[newNum] !== undefined) return;
+    const defaultPchar: PcharType = { sratio: [], qratio: [], hratio: [], tratio: [] };
+    set({ pcharData: { ...existing, [newNum]: defaultPchar } });
+  },
+
+  deletePcharType: (typeNum) => {
+    const existing = { ...get().pcharData };
+    delete existing[typeNum];
+    set({ pcharData: existing });
+  },
+
+  toggleLock: () => {
+    set({ isLocked: !get().isLocked });
+  },
+
+  setProjectName: (name: string) => {
+    set({ projectName: name, projectNameError: name.trim() === "" ? "Please enter a file name" : null });
+  },
+
+  setProjectNameError: (error: string | null) => {
+    set({ projectNameError: error });
+  },
+
+  setLoadedFileHandle: (handle: FileSystemFileHandle | null) => {
+    set({ loadedFileHandle: handle });
+  },
+
+  saveToHistory: () => {
+    const { nodes, edges, hSchedules, computationalParams, outputRequests, history } = get();
+    const currentState = JSON.parse(JSON.stringify({ nodes, edges, hSchedules, computationalParams, outputRequests }));
+    set({
+      history: {
+        past: [currentState, ...history.past].slice(0, 50),
+        future: [],
+      },
+    });
+  },
+
+  undo: () => {
+    const { nodes, edges, computationalParams, outputRequests, history } = get();
+    if (history.past.length === 0) return;
+
+    const previous = history.past[0];
+    const newPast = history.past.slice(1);
+    const currentState = { nodes, edges, computationalParams, outputRequests };
+
+    set({
+      ...previous,
+      history: {
+        past: newPast,
+        future: [currentState, ...history.future],
+      },
+    });
+  },
+
+  redo: () => {
+    const { nodes, edges, computationalParams, outputRequests, history } = get();
+    if (history.future.length === 0) return;
+
+    const next = history.future[0];
+    const newFuture = history.future.slice(1);
+    const currentState = { nodes, edges, computationalParams, outputRequests };
+
+    set({
+      ...next,
+      history: {
+        past: [currentState, ...history.past],
+        future: newFuture,
+      },
+    });
+  },
+
+  autoArrange: () => {
+    const { nodes, edges } = get();
+    if (nodes.length === 0) return;
+
+    get().saveToHistory();
+
+    const H_GAP = 300; // horizontal distance between columns
+    const V_GAP = 190; // vertical distance per leaf-unit (base spacing)
+
+    // ── STEP 1: Build full adjacency (deduplicated, no self-loops) ─────────────
+    const allOut = new Map<string, Set<string>>();
+    const allIn  = new Map<string, Set<string>>();
+    nodes.forEach(n => { allOut.set(n.id, new Set()); allIn.set(n.id, new Set()); });
+    edges.forEach(e => {
+      if (e.source === e.target) return;
+      if (!allOut.has(e.source) || !allOut.has(e.target)) return;
+      allOut.get(e.source)!.add(e.target);
+      allIn.get(e.target)!.add(e.source);
+    });
+
+    // ── STEP 2: Cycle-break using DFS — find & remove back edges ──────────────
+    const dfsVisited  = new Set<string>();
+    const dfsStack    = new Set<string>();
+    const backEdgeSet = new Set<string>(); // "src->tgt"
+
+    const dfs = (id: string) => {
+      dfsVisited.add(id);
+      dfsStack.add(id);
+      for (const nb of allOut.get(id) ?? []) {
+        if (!dfsVisited.has(nb)) dfs(nb);
+        else if (dfsStack.has(nb)) backEdgeSet.add(`${id}->${nb}`);
+      }
+      dfsStack.delete(id);
+    };
+    nodes.forEach(n => { if (!dfsVisited.has(n.id)) dfs(n.id); });
+
+    // Build DAG adjacency (back edges removed)
+    const dagOut = new Map<string, string[]>();
+    const dagIn  = new Map<string, string[]>();
+    nodes.forEach(n => { dagOut.set(n.id, []); dagIn.set(n.id, []); });
+    const seenEdge = new Set<string>();
+    edges.forEach(e => {
+      if (e.source === e.target) return;
+      if (!dagOut.has(e.source) || !dagOut.has(e.target)) return;
+      const key = `${e.source}->${e.target}`;
+      if (backEdgeSet.has(key) || seenEdge.has(key)) return;
+      seenEdge.add(key);
+      dagOut.get(e.source)!.push(e.target);
+      dagIn.get(e.target)!.push(e.source);
+    });
+
+    // ── STEP 3: Longest-path layering (Kahn's topo-sort + DP) ─────────────────
+    const levelMap   = new Map<string, number>();
+    const inDeg      = new Map<string, number>();
+    nodes.forEach(n => {
+      levelMap.set(n.id, 0);
+      inDeg.set(n.id, dagIn.get(n.id)!.length);
+    });
+
+    // Seed queue — reservoirs and flow-boundaries first (they are always sources)
+    const priorityOrder = ['reservoir', 'flowBoundary'];
+    const nodeType = new Map(nodes.map(n => [n.id, n.type as string]));
+
+    const seeds = nodes
+      .filter(n => inDeg.get(n.id) === 0)
+      .sort((a, b) => {
+        const ap = priorityOrder.indexOf(nodeType.get(a.id) ?? '');
+        const bp = priorityOrder.indexOf(nodeType.get(b.id) ?? '');
+        return (ap < 0 ? 99 : ap) - (bp < 0 ? 99 : bp);
+      })
+      .map(n => n.id);
+
+    const topoQueue = [...seeds];
+    const processed = new Set<string>();
+
+    while (topoQueue.length > 0) {
+      const cur = topoQueue.shift()!;
+      if (processed.has(cur)) continue;
+      processed.add(cur);
+      const curLvl = levelMap.get(cur)!;
+      for (const nb of dagOut.get(cur) ?? []) {
+        if ((curLvl + 1) > (levelMap.get(nb) ?? 0)) {
+          levelMap.set(nb, curLvl + 1);
+        }
+        const newDeg = (inDeg.get(nb) ?? 1) - 1;
+        inDeg.set(nb, newDeg);
+        if (newDeg <= 0 && !processed.has(nb)) topoQueue.push(nb);
+      }
+    }
+
+    // Any nodes in cycles that weren't processed: place them near their neighbours
+    nodes.forEach(n => {
+      if (!processed.has(n.id)) {
+        let best = 0;
+        for (const nb of allOut.get(n.id) ?? []) {
+          if (processed.has(nb)) best = Math.max(best, (levelMap.get(nb) ?? 0) - 1);
+        }
+        for (const nb of allIn.get(n.id) ?? []) {
+          if (processed.has(nb)) best = Math.max(best, (levelMap.get(nb) ?? 0) + 1);
+        }
+        levelMap.set(n.id, best);
+      }
+    });
+
+    // ── STEP 4: Group nodes by level ──────────────────────────────────────────
+    const levelGroups = new Map<number, string[]>();
+    levelMap.forEach((lvl, id) => {
+      if (!levelGroups.has(lvl)) levelGroups.set(lvl, []);
+      levelGroups.get(lvl)!.push(id);
+    });
+
+    // Re-index levels to consecutive 0-based integers
+    const sortedLevels = Array.from(levelGroups.keys()).sort((a, b) => a - b);
+    const levelRemap   = new Map<number, number>();
+    sortedLevels.forEach((lvl, idx) => levelRemap.set(lvl, idx));
+
+    // ── STEP 5: Barycenter heuristic (3 passes) to minimise edge crossings ─────
+    const tempY = new Map<string, number>();
+    nodes.forEach(n => tempY.set(n.id, n.position.y));
+
+    for (let pass = 0; pass < 3; pass++) {
+      levelGroups.forEach((ids, _lvl) => {
+        const sorted = [...ids].sort((a, b) => {
+          const score = (id: string) => {
+            const parents  = dagIn.get(id)  ?? [];
+            const children = dagOut.get(id) ?? [];
+            const all      = [...parents, ...children];
+            if (all.length === 0) return tempY.get(id) ?? 0;
+            return all.reduce((s, nb) => s + (tempY.get(nb) ?? 0), 0) / all.length;
+          };
+          return score(a) - score(b);
+        });
+        sorted.forEach((id, idx) => tempY.set(id, idx * V_GAP));
+        levelGroups.set(_lvl, sorted);
+      });
+    }
+
+    // ── STEP 6: Subtree-aware node positions ──────────────────────────────────
+    // Compute the "leaf span" of each node — the number of leaves reachable
+    // through its DAG descendants.  Nodes with N branches below them get N×
+    // the vertical slot so sibling branches never crowd each other.
+    const leafSpan = new Map<string, number>();
+    const computeLeafSpan = (id: string, visiting = new Set<string>()): number => {
+      if (leafSpan.has(id)) return leafSpan.get(id)!;
+      if (visiting.has(id)) { leafSpan.set(id, 1); return 1; }
+      visiting.add(id);
+      const children = dagOut.get(id) ?? [];
+      const span = children.length === 0
+        ? 1
+        : children.reduce((s, c) => s + computeLeafSpan(c, visiting), 0);
+      leafSpan.set(id, span);
+      return span;
+    };
+    nodes.forEach(n => computeLeafSpan(n.id));
+
+    const rawPos = new Map<string, { x: number; y: number }>();
+    levelGroups.forEach((ids, lvl) => {
+      const col = levelRemap.get(lvl) ?? lvl;
+      const x   = col * H_GAP;
+
+      // Total span = sum of all leaf-spans in this column
+      const spans   = ids.map(id => Math.max(1, leafSpan.get(id) ?? 1));
+      const totalH  = (spans.reduce((s, sp) => s + sp, 0) - 1) * V_GAP;
+
+      let curY = -totalH / 2;
+      ids.forEach((id, i) => {
+        const sp = spans[i];
+        // Centre this node inside its allocated slot
+        rawPos.set(id, { x, y: curY + (sp - 1) * V_GAP / 2 });
+        curY += sp * V_GAP;
+      });
+    });
+
+    // Offset so top-left corner sits at (80, 80)
+    let minX = Infinity, minY = Infinity;
+    rawPos.forEach(p => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
+
+    const finalPos = new Map<string, { x: number; y: number }>();
+    rawPos.forEach((p, id) => {
+      finalPos.set(id, { x: p.x - minX + 80, y: p.y - minY + 80 });
+    });
+
+    // ── STEP 7: Re-assign edge handles based on relative node positions ────────
+    // This is the critical fix — without this, edges exit/enter from wrong sides.
+    const arrangedEdges = edges.map(e => {
+      if (e.source === e.target) return e;
+      const src = finalPos.get(e.source);
+      const tgt = finalPos.get(e.target);
+      if (!src || !tgt) return e;
+
+      const dx = tgt.x - src.x;
+      const dy = tgt.y - src.y;
+      let sourceHandle: string;
+      let targetHandle: string;
+
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        // Primarily horizontal movement
+        if (dx >= 0) { sourceHandle = 's-right'; targetHandle = 't-left'; }
+        else         { sourceHandle = 's-left';  targetHandle = 't-right'; }
+      } else {
+        // Primarily vertical movement
+        if (dy >= 0) { sourceHandle = 's-bottom'; targetHandle = 't-top'; }
+        else         { sourceHandle = 's-top';    targetHandle = 't-bottom'; }
+      }
+
+      return { ...e, sourceHandle, targetHandle };
+    });
+
+    // ── STEP 8: Apply ──────────────────────────────────────────────────────────
+    const arrangedNodes = nodes.map(n => {
+      const pos = finalPos.get(n.id);
+      return pos ? { ...n, position: pos } : n;
+    });
+
+    set({ nodes: arrangedNodes as WhamoNode[], edges: arrangedEdges as WhamoEdge[] });
+  },
+}));

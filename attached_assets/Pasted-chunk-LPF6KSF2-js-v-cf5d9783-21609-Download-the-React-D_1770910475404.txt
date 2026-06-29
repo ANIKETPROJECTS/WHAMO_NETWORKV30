@@ -1,0 +1,51 @@
+chunk-LPF6KSF2.js?v=cf5d9783:21609 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+Designer.tsx:144 Uncaught ReferenceError: Cannot access 'handleSave' before initialization
+    at DesignerInner (Designer.tsx:144:112)
+    at renderWithHooks (chunk-LPF6KSF2.js?v=cf5d9783:11596:26)
+    at mountIndeterminateComponent (chunk-LPF6KSF2.js?v=cf5d9783:14974:21)
+    at beginWork (chunk-LPF6KSF2.js?v=cf5d9783:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-LPF6KSF2.js?v=cf5d9783:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-LPF6KSF2.js?v=cf5d9783:3705:24)
+    at invokeGuardedCallback (chunk-LPF6KSF2.js?v=cf5d9783:3739:39)
+    at beginWork$1 (chunk-LPF6KSF2.js?v=cf5d9783:19818:15)
+    at performUnitOfWork (chunk-LPF6KSF2.js?v=cf5d9783:19251:20)
+    at workLoopSync (chunk-LPF6KSF2.js?v=cf5d9783:19190:13)
+Designer.tsx:144 Uncaught ReferenceError: Cannot access 'handleSave' before initialization
+    at DesignerInner (Designer.tsx:144:112)
+    at renderWithHooks (chunk-LPF6KSF2.js?v=cf5d9783:11596:26)
+    at mountIndeterminateComponent (chunk-LPF6KSF2.js?v=cf5d9783:14974:21)
+    at beginWork (chunk-LPF6KSF2.js?v=cf5d9783:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-LPF6KSF2.js?v=cf5d9783:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-LPF6KSF2.js?v=cf5d9783:3705:24)
+    at invokeGuardedCallback (chunk-LPF6KSF2.js?v=cf5d9783:3739:39)
+    at beginWork$1 (chunk-LPF6KSF2.js?v=cf5d9783:19818:15)
+    at performUnitOfWork (chunk-LPF6KSF2.js?v=cf5d9783:19251:20)
+    at workLoopSync (chunk-LPF6KSF2.js?v=cf5d9783:19190:13)
+chunk-LPF6KSF2.js?v=cf5d9783:14080 The above error occurred in the <DesignerInner> component:
+
+    at DesignerInner (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/src/pages/Designer.tsx?t=1770909767352:71:21)
+    at BatchProvider (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@xyflow_react.js?v=cf5d9783:6879:36)
+    at ReactFlowProvider (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@xyflow_react.js?v=cf5d9783:8936:44)
+    at Designer
+    at Route (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=cf5d9783:190:16)
+    at Switch (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=cf5d9783:246:17)
+    at Router
+    at Provider (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-TU3MQTJK.js?v=cf5d9783:37:15)
+    at TooltipProvider (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=cf5d9783:59:5)
+    at QueryClientProvider (https://635e1b79-7620-47a3-ac28-634401c5b3c2-00-2yeh2swrryxhl.spock.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=cf5d9783:2747:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-LPF6KSF2.js?v=cf5d9783:14080
+chunk-LPF6KSF2.js?v=cf5d9783:19466 Uncaught ReferenceError: Cannot access 'handleSave' before initialization
+    at DesignerInner (Designer.tsx:144:112)
+    at renderWithHooks (chunk-LPF6KSF2.js?v=cf5d9783:11596:26)
+    at mountIndeterminateComponent (chunk-LPF6KSF2.js?v=cf5d9783:14974:21)
+    at beginWork (chunk-LPF6KSF2.js?v=cf5d9783:15962:22)
+    at beginWork$1 (chunk-LPF6KSF2.js?v=cf5d9783:19806:22)
+    at performUnitOfWork (chunk-LPF6KSF2.js?v=cf5d9783:19251:20)
+    at workLoopSync (chunk-LPF6KSF2.js?v=cf5d9783:19190:13)
+    at renderRootSync (chunk-LPF6KSF2.js?v=cf5d9783:19169:15)
+    at recoverFromConcurrentError (chunk-LPF6KSF2.js?v=cf5d9783:18786:28)
+    at performConcurrentWorkOnRoot (chunk-LPF6KSF2.js?v=cf5d9783:18734:30)

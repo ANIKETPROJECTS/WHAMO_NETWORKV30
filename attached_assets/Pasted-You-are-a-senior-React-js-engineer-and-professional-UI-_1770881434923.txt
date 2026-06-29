@@ -1,0 +1,127 @@
+You are a senior React.js engineer and professional UI/UX designer
+experienced in building desktop-style engineering software
+(WHAMO / hydraulic analysis / CAD-like tools).
+
+TASK:
+Modify my existing React (Vite) project UI so that
+"New Project" and "Open Project" are shown directly
+inside the main white canvas area — NOT in a popup,
+NOT as a separate page — while keeping the header,
+menu bar, and all other components visible.
+
+--------------------------------
+GLOBAL RULES (STRICT)
+--------------------------------
+- DO NOT use modal dialogs or popups
+- DO NOT hide or replace the header
+- DO NOT navigate to a new page
+- Everything must happen inside the existing editor layout
+- UI must feel like desktop engineering software
+
+--------------------------------
+LAYOUT REQUIREMENTS
+--------------------------------
+
+1) HEADER (UNCHANGED)
+- Keep existing header exactly as-is:
+  - Project name ("Untitled Network")
+  - Menu bar (File, Edit, View, Insert, Tools, Help)
+  - Title: "Hydraulic transient analysis software"
+  - Buttons: "Generate .INP", "Generate .OUT"
+
+2) MAIN CANVAS (WHITE SCREEN)
+- White background
+- Light dotted grid
+- Full width and height
+- Scrollable and zoomable
+- Always visible
+
+--------------------------------
+NEW / OPEN PROJECT UI (IMPORTANT)
+--------------------------------
+
+Show two large cards INSIDE the canvas area
+at the center positions marked in the uploaded image
+(left-center and right-center of the canvas).
+
+Card 1: New Project
+- Icon: plus (+)
+- Title: "New Project"
+- Subtitle:
+  "Start a new hydraulic network analysis project from scratch"
+
+Card 2: Open Project
+- Icon: document/file
+- Title: "Open Project"
+- Subtitle:
+  "Continue working on an existing project or import files"
+
+Design:
+- White cards
+- Rounded corners
+- Soft shadow
+- Blue icon background
+- Professional spacing
+- Same visual style as WHAMO Analysis screen
+
+--------------------------------
+BEHAVIOR (CRITICAL)
+--------------------------------
+
+- Cards are rendered ONLY when:
+  projectState === "empty"
+
+- Clicking "New Project":
+  - Clears canvas
+  - Initializes empty network
+  - Hides both cards
+  - Keeps user in the same canvas
+
+- Clicking "Open Project":
+  - Loads mock project data
+  - Hides both cards
+  - Keeps user in the same canvas
+
+- NO popup
+- NO modal
+- NO page navigation
+
+--------------------------------
+IMPLEMENTATION DETAILS
+--------------------------------
+
+- Use a simple React state:
+  const [projectState, setProjectState] = useState("empty");
+
+States:
+- "empty" → show New/Open cards inside canvas
+- "active" → show canvas only
+
+- Cards should be absolutely positioned
+  relative to the canvas container
+  (not the full page)
+
+--------------------------------
+STYLING RULES
+--------------------------------
+- Background: pure white
+- Grid: subtle dotted pattern
+- Primary color: dark blue
+- Accent color: light blue
+- No gradients
+- No animations beyond hover
+- Clean, government-grade look
+
+--------------------------------
+FINAL RESULT
+--------------------------------
+The final UI should look like a professional
+WHAMO-style hydraulic analysis desktop application:
+
+- Header always visible
+- White engineering canvas always visible
+- New/Open Project cards shown inside canvas
+- No popups, no modals, no page changes
+- Exactly matching the uploaded screenshots and marked positions
+
+Apply changes cleanly without breaking existing functionality.

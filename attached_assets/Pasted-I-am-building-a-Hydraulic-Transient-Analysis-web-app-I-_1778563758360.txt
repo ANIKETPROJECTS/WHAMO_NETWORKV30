@@ -1,0 +1,179 @@
+I am building a Hydraulic Transient Analysis web app. I need to add an 
+AUTO PCHAR GENERATOR feature for pumps, similar to how I already built 
+a TCHAR Generator for turbines.
+
+---
+
+## BACKGROUND — What PCHAR TYPE 3 is
+
+PCHAR TYPE 3 is a pump characteristic block used in waterhammer/transient 
+simulation INP files. It looks like this:
+
+PCHAR TYPE 3
+ SRATIO  -2.0  -1.5  -1.0  -0.5  0.0  0.5  1.0  1.5  2.0
+ QRATIO  -2.0  -1.5  -1.0  -0.5  0.0  0.5  1.0  1.5  2.0
+ HRATIO
+   (one row per SRATIO value, one value per QRATIO column)
+ TRATIO
+   (one row per SRATIO value, one value per QRATIO column, 8 per line)
+FINISH
+
+Where:
+- SRATIO = speed ratio = actual speed / rated speed
+- QRATIO = flow ratio  = actual flow  / rated flow
+- HRATIO = head ratio  = actual head  / rated head
+- TRATIO = torque ratio = actual torque / rated torque
+
+This covers ALL FOUR QUADRANTS of pump operation including:
+  normal pumping, reverse flow, runaway, and turbine mode.
+
+---
+
+## DATA SOURCE — QuadrantCurvesPredefined_Pumps.txt
+
+I have a predefined pump curves file with this structure:
+
+SPECIFIC SPEED (US/SI): 1280 / 25
+CURVE FORMAT: CircularFormat
+HEAD: 72          ← number of data points follows
+  angle  h_value  ← pairs of (theta_degrees, WH value)
+  ...
+TORQUE: 48        ← number of data points follows
+  angle  t_value  ← pairs of (theta_degrees, WB value)
+  ...
+
+(repeats for each specific speed: 1280/25, 1800/35, 4850/94, 7500/145, 
+13500/260 for CircularFormat, and more for Suter_ChaudhryFormat and 
+Unused format)
+
+---
+
+## CURVE FORMATS EXPLAINED
+
+### 1. CircularFormat
+Uses the Suter/circular representation:
+- X-axis is angle theta in DEGREES (0 to 360)
+- theta = atan2(Q_ratio, N_ratio) converted to degrees (in all 4 quadrants)
+- WH(theta) = H_ratio / (N_ratio² + Q_ratio²)  → head characteristic
+- WB(theta) = T_ratio / (N_ratio² + Q_ratio²)  → torque characteristic
+
+To RECOVER H_ratio and T_ratio from CircularFormat at a point (N_ratio, Q_ratio):
+  theta = atan2(Q_ratio, N_ratio) in degrees (0-360)
+  denom = N_ratio² + Q_ratio²
+  H_ratio = WH(theta) × denom
+  T_ratio = WB(theta) × denom
+
+Interpolate WH and WB at required theta using linear interpolation between 
+the two nearest data points in the file.
+
+### 2. Suter_ChaudhryFormat
+Same as CircularFormat but theta is in RADIANS (0 to 2π).
+Conversion: theta_radians = theta_degrees × π/180
+
+### 3. Unused
+This format is also in RADIANS but uses a different angular convention. 
+SKIP these entries — do not use them for auto-generation.
+
+---
+
+## WHAT THE USER INPUTS (UI)
+
+Show a panel with these fields when a pump element is selected:
+
+1. SPECIFIC SPEED dropdown:
+   - Ns 1280 (US) / 25 (SI)
+   - Ns 1800 (US) / 35 (SI)
+   - Ns 4850 (US) / 94 (SI)
+   - Ns 7500 (US) / 145 (SI)
+   - Ns 13500 (US) / 260 (SI)
+
+2. Design Parameters:
+   - Rated Head (H_rated) — e.g. 100 ft
+   - Rated Flow (Q_rated) — e.g. 50 cfs
+   - Rated Speed (N_rated) — e.g. 1200 RPM
+
+3. Grid Resolution:
+   - SRATIO range: min (e.g. -1.5) to max (e.g. 1.5), step (e.g. 0.25)
+   - QRATIO range: min (e.g. -1.5) to max (e.g. 1.5), step (e.g. 0.25)
+   (default: both from -1.5 to 1.5 in steps of 0.25 → 13 values each)
+
+4. A "Generate PCHAR From Curves" button
+
+5. A preview showing the generated PCHAR block (dark code box)
+
+6. Save button to write to the pump element
+
+---
+
+## ALGORITHM — How to Generate PCHAR
+
+Given user inputs H_rated, Q_rated, N_rated and selected Ns curves:
+
+STEP 1 — Build SRATIO and QRATIO arrays from user grid inputs.
+  Example: SRATIO = [-1.5, -1.25, -1.0, ..., 1.25, 1.5]
+           QRATIO = [-1.5, -1.25, -1.0, ..., 1.25, 1.5]
+
+STEP 2 — Load the HEAD and TORQUE data for the selected specific speed 
+from the predefined file. Parse all (angle, value) pairs.
+
+STEP 3 — For each combination of (s, q) in SRATIO × QRATIO:
+
+  a. Compute theta:
+     For CircularFormat:  theta = atan2(q, s) in degrees, mapped to [0, 360)
+     For Suter format:    theta = atan2(q, s) in radians, mapped to [0, 2π)
+
+  b. Interpolate WH(theta) and WB(theta) from the loaded curve data using 
+     linear interpolation between the nearest two angle values.
+     Handle wraparound: if theta is beyond the last point, interpolate 
+     between last and first point (circular).
+
+  c. Compute denominator:
+     denom = s² + q²
+     If denom < 1e-6, set H_ratio = 0 and T_ratio = 0 (avoid divide by zero)
+     Else:
+       H_ratio = WH(theta) × denom
+       T_ratio = WB(theta) × denom
+
+  d. Store H_ratio and T_ratio for this (s, q) pair.
+
+STEP 4 — Format the PCHAR block:
+
+PCHAR TYPE 3
+ SRATIO  [space-separated SRATIO values, 2 decimal places]
+ QRATIO  [space-separated QRATIO values, 2 decimal places]
+ HRATIO
+   [one row per SRATIO value]
+   [each row has one H_ratio per QRATIO value, 4 decimal places]
+ TRATIO
+   [one row per SRATIO value]
+   [each row has one T_ratio per QRATIO value, 4 decimal places, 8 per line]
+FINISH
+
+---
+
+## CURVE PREVIEW (optional but nice)
+
+Show two heatmap-style grids:
+- HRATIO grid: rows = SRATIO, columns = QRATIO, color = H_ratio value
+- TRATIO grid: rows = SRATIO, columns = QRATIO, color = T_ratio value
+
+Use a diverging colormap (blue = negative, white = zero, red = positive).
+
+---
+
+## NOTES & EDGE CASES
+
+- PCHAR TYPE 3 data is GLOBAL — shared across all pumps of the same type. 
+  Show a note: "PCHAR TYPE 3 data is global — shared across all pumps of this type."
+- Clamp extreme H_ratio and T_ratio values to ±5.0 to avoid numerical issues.
+- If the user changes Ns or grid, regenerate the preview live.
+- The generated block should be copy-pasteable into the INP file directly.
+- Use the same dark-themed code preview box as the TCHAR generator UI.
+
+---
+
+## TECH STACK
+
+Use the same React + Tailwind stack already in use in the project.
+The predefined curves are stored in: QuadrantCurvesPredefined_Pumps.txt
+Parse this file on app load and store in memory, keyed by specific speed.

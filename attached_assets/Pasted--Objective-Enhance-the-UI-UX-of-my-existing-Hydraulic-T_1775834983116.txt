@@ -1,0 +1,103 @@
+🎯 Objective
+
+Enhance the UI/UX of my existing Hydraulic Transient Analysis Software with:
+
+Hover data toggle (show/hide)
+Unit selector reposition (SI/FPS)
+Controlled Save button (manual save instead of auto-save)
+
+⚠️ Important Constraints:
+
+❌ Do NOT change backend logic
+❌ Do NOT modify database schema
+❌ Do NOT break existing flow or .inp generation
+✅ Only extend UI + controlled state handling
+🔧 1. Add Toggle Button (Show/Hide Hover Data)
+📍 Location:
+Top menu bar → Right side of "Help" button
+🎯 Function:
+Toggle visibility of hover tooltip (Node/Element data popup)
+🧠 Behavior:
+Default: ON (hover data visible)
+Toggle OFF → No tooltip shown on hover
+Toggle ON → Tooltip visible again
+💡 UI Design:
+Use switch toggle or eye icon:
+👁 Show Data
+🚫 Hide Data
+🧪 Logic:
+const [showHoverData, setShowHoverData] = useState(true);
+लागू in Hover Component:
+if (!showHoverData) return null;
+🔧 2. Move Unit Selector (SI / FPS)
+📍 Current:
+Inside panel under "Units" section (middle)
+✅ Required Change:
+
+Move it to:
+
+👉 Top-right corner of side panel header
+👉 Same row as: Node #15 or Element Name
+
+🎯 Final Layout:
+---------------------------------
+| Node #15           [ SI | FPS ] |
+---------------------------------
+💡 UI Requirements:
+Right-aligned
+Inline with title
+Compact toggle style (button group)
+🧪 Implementation Example:
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+🔧 3. Add Save Button (Controlled Save)
+📍 Location:
+Bottom of side panel (see your 3rd image)
+🎯 Layout Change:
+[ Delete Element ]   [ Save ]
+Delete → LEFT (red)
+Save → RIGHT (primary button)
+🧠 Behavior Change (VERY IMPORTANT):
+❌ Current:
+Auto-save on input change
+✅ New:
+Values ONLY saved when user clicks Save button
+🧪 Implementation Logic:
+Step 1: Create Temporary Form State
+const [formData, setFormData] = useState(initialValues);
+Step 2: Inputs Update Only Local State
+onChange={(e) => {
+  setFormData({...formData, field: e.target.value});
+}}
+Step 3: Save Button Commits Data
+const handleSave = () => {
+  updateElementData(formData); // existing function
+};
+💡 Button UI:
+Color: Blue / Primary
+Icon: 💾 (optional)
+Text: Save
+⚠️ Important Handling
+Prevent:
+Immediate DB update
+Immediate canvas update (optional)
+Allow:
+Batch editing before saving
+Cancel by switching element (optional reset)
+🎯 Final Expected Output
+
+After implementation:
+
+✅ Toggle button controls hover data visibility
+✅ SI/FPS unit selector at top-right header (clean UI)
+✅ Save button added next to Delete
+✅ Data only updates on Save click
+✅ No breaking changes in existing system
+
+💡 Optional Enhancements (if easy)
+Show toast: "Changes saved successfully"
+Disable Save button if no changes
+Add unsaved changes warning

@@ -1,0 +1,101 @@
+Enhance the existing Help Guide without affecting any current functionality, navigation, UI behavior, PDF generation, or existing content structure.
+
+### 1. Expand the "Network Elements" Section
+
+Currently, the Network Elements section contains only brief descriptions. Enhance it by providing detailed documentation for every supported network element.
+
+For each element (Reservoir, Node, Junction, Surge Tank, Flow Boundary, Pump, Valve, Turbine, Check Valve, Dummy Pipe, Conduit, and any other supported element), include:
+
+* Element image/illustration
+* Element name
+* Detailed description
+* Purpose of the element
+* Why it is used
+* Where it should be used
+* How to create/use it in the application
+* Available properties and their meanings
+* Input field descriptions
+* Best practices
+* Common use cases
+* Design recommendations
+* Important notes
+* Warnings and restrictions
+* Common user mistakes
+* Validation rules
+* Error conditions and troubleshooting guidance
+
+Examples:
+
+* Prevent invalid reverse conduit connections.
+* Explain maximum allowed connections for elements where applicable.
+* Explain invalid configurations and their consequences.
+* Explain required fields and dependency rules.
+
+### 2. Expand the "Connections" Section
+
+Add comprehensive documentation for all supported connection types and element-to-element connections.
+
+Include detailed information for:
+
+* Conduit
+* Valve
+* Reservoir connections
+* Flow Boundary connections
+* Node connections
+* Junction connections
+* Surge Tank connections
+* Pump connections
+* Check Valve connections
+* Turbine connections
+* Any other supported connection type
+
+For each connection type, provide:
+
+* Connection image/diagram
+* Description
+* Purpose
+* Connection rules
+* Valid source and target elements
+* Invalid connection combinations
+* Required properties
+* Recommended usage
+* Common mistakes
+* Warning messages
+* Error scenarios
+* Troubleshooting guidance
+
+### 3. Add Element Filter in "Network Elements"
+
+Add a dropdown filter at the top of the Network Elements section.
+
+Requirements:
+
+* By default, all element information must be displayed.
+* When a specific element is selected from the dropdown, only that element’s documentation should be shown.
+* Switching filters must be smooth and without reloading the Help Guide.
+* Existing navigation must continue to work normally.
+
+### 4. Add Connection Filter in "Connections"
+
+Add a dropdown filter at the top of the Connections section.
+
+Requirements:
+
+* By default, all connection information must be displayed.
+* When a specific connection type is selected, only relevant connection documentation should be shown.
+* Existing layout and navigation must remain unchanged.
+
+### 5. PDF Export Enhancement
+
+After implementing all documentation improvements, ensure the Download PDF feature includes:
+
+* All newly added element information
+* All element images
+* All connection information
+* All warnings and troubleshooting content
+* All property descriptions
+* Filtered content support where applicable
+* Proper formatting and pagination
+* Consistent styling between Help Guide and PDF
+
+The PDF content must fully match the Help Guide content so users can download and view the complete documentation offline.

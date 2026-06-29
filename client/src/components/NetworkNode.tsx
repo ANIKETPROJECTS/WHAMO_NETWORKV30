@@ -1,0 +1,240 @@
+import { Handle, Position, NodeProps } from '@xyflow/react';
+import { memo } from 'react';
+import { TooltipWrapper, DataList } from './TooltipWrapper';
+import { useNetworkStore } from '@/lib/store';
+import damIcon from '@assets/dam_1779522984604.png';
+import yIntersectionIcon from '@assets/y-intersection_(1)_1779523210044.png';
+import waterTankIcon from '@assets/water-tank_(2)_1779523360829.png';
+import waterPumpIcon from '@assets/water-pump_1779523451215.png';
+import pipeIcon from '@assets/pipe_1779523475650.png';
+import turbineImgIcon from '@assets/turbine_1779523517554.png';
+import windIcon from '@assets/wind_1779523398812.png';
+
+const HandleStyle = "!w-6 !h-6 !bg-black !border-2 !border-white opacity-0 group-hover:opacity-100 transition-opacity";
+export const CIRCLE_SIZE = 72;
+const ICON_SIZE = 34;
+
+function useNodeOrderError(id: string) {
+  return useNetworkStore(state => state.nodeOrderErrorIds.includes(id));
+}
+
+function circleStyle(selected: boolean, hasOrderError: boolean): React.CSSProperties {
+  return {
+    width: CIRCLE_SIZE,
+    height: CIRCLE_SIZE,
+    borderRadius: '50%',
+    border: `3px solid ${hasOrderError ? '#ef4444' : '#000'}`,
+    background: 'white',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+    inset: 0,
+    transition: 'all 0.15s',
+    boxShadow: selected ? '0 0 0 3px rgba(0,0,0,0.15)' : undefined,
+  };
+}
+
+const AllHandles = () => (
+  <>
+    <Handle type="target" id="t-top"    position={Position.Top}    className={HandleStyle} />
+    <Handle type="source" id="s-top"    position={Position.Top}    className={HandleStyle} />
+    <Handle type="target" id="t-bottom" position={Position.Bottom} className={HandleStyle} />
+    <Handle type="source" id="s-bottom" position={Position.Bottom} className={HandleStyle} />
+    <Handle type="target" id="t-left"   position={Position.Left}   className={HandleStyle} />
+    <Handle type="source" id="s-left"   position={Position.Left}   className={HandleStyle} />
+    <Handle type="target" id="t-right"  position={Position.Right}  className={HandleStyle} />
+    <Handle type="source" id="s-right"  position={Position.Right}  className={HandleStyle} />
+  </>
+);
+
+// Circle with icon + label both inside
+function IconNode({
+  nodeId, selected, hasOrderError, icon, label, alt,
+}: {
+  nodeId: string; selected: boolean; hasOrderError: boolean;
+  icon: string; label: React.ReactNode; alt: string;
+}) {
+  return (
+    <div style={{ position: 'relative', width: CIRCLE_SIZE, height: CIRCLE_SIZE }} className="group">
+      <div style={{ ...circleStyle(selected, hasOrderError), gap: 3 }}>
+        <img src={icon} style={{ width: ICON_SIZE, height: ICON_SIZE, objectFit: 'contain', pointerEvents: 'none' }} alt={alt} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#000', lineHeight: 1, whiteSpace: 'nowrap', userSelect: 'none' }}>
+          {label}
+        </span>
+      </div>
+      <AllHandles />
+    </div>
+  );
+}
+
+export const ReservoirNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Reservoir Properties" />}>
+      <IconNode nodeId={id} selected={!!selected} hasOrderError={hasOrderError}
+        icon={damIcon} label={data.label as React.ReactNode} alt="Reservoir" />
+    </TooltipWrapper>
+  );
+});
+
+export const SimpleNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Node Properties" />}>
+      <div style={{ position: 'relative', width: CIRCLE_SIZE, height: CIRCLE_SIZE }} className="group">
+        <div style={{ ...circleStyle(!!selected, hasOrderError), gap: 0 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: '#000', lineHeight: 1 }}>
+            N{data.nodeNumber as React.ReactNode}
+          </span>
+        </div>
+        <AllHandles />
+      </div>
+    </TooltipWrapper>
+  );
+});
+
+export const JunctionNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Junction Properties" />}>
+      <IconNode nodeId={id} selected={!!selected} hasOrderError={hasOrderError}
+        icon={yIntersectionIcon} label={`J${data.nodeNumber}`} alt="Junction" />
+    </TooltipWrapper>
+  );
+});
+
+export const SurgeTankNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Surge Tank Properties" />}>
+      <IconNode nodeId={id} selected={!!selected} hasOrderError={hasOrderError}
+        icon={waterTankIcon} label={data.label as React.ReactNode} alt="Surge Tank" />
+    </TooltipWrapper>
+  );
+});
+
+export const PumpNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Pump Properties" />}>
+      <IconNode nodeId={id} selected={!!selected} hasOrderError={hasOrderError}
+        icon={waterPumpIcon} label={data.label as React.ReactNode} alt="Pump" />
+    </TooltipWrapper>
+  );
+});
+
+export const CheckValveNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Check Valve Properties" />}>
+      <IconNode nodeId={id} selected={!!selected} hasOrderError={hasOrderError}
+        icon={pipeIcon} label={data.label as React.ReactNode} alt="Check Valve" />
+    </TooltipWrapper>
+  );
+});
+
+export const TurbineNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  const borderColor = hasOrderError ? '#ef4444' : (selected ? '#052e16' : '#166534');
+  const bgColor     = hasOrderError ? '#ef4444' : '#16a34a';
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Turbine Properties" />}>
+      <div style={{ position: 'relative', width: CIRCLE_SIZE, height: CIRCLE_SIZE }} className="group">
+        {/* Diamond shape: outer square rotated 45° */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <div style={{
+            width: 52,
+            height: 52,
+            background: bgColor,
+            border: `3px solid ${borderColor}`,
+            borderRadius: 4,
+            transform: 'rotate(45deg)',
+            boxShadow: selected ? '0 0 0 3px rgba(22,101,52,0.3)' : '0 2px 6px rgba(0,0,0,0.25)',
+            transition: 'all 0.15s',
+          }}>
+            {/* Counter-rotate content so icon/label stays upright */}
+            <div style={{
+              width: '100%', height: '100%',
+              transform: 'rotate(-45deg)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 2,
+            }}>
+              <img
+                src={turbineImgIcon}
+                style={{ width: 24, height: 24, objectFit: 'contain', pointerEvents: 'none', filter: 'brightness(0) invert(1)' }}
+                alt="Turbine"
+              />
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', lineHeight: 1, whiteSpace: 'nowrap', userSelect: 'none' }}>
+                {data.label as React.ReactNode}
+              </span>
+            </div>
+          </div>
+        </div>
+        <AllHandles />
+      </div>
+    </TooltipWrapper>
+  );
+});
+
+export const FlowBoundaryNode = memo(({ id, data, selected }: NodeProps) => {
+  const node = useNetworkStore(state => state.nodes.find(n => n.id === id));
+  const displayData = node ? node.data : data;
+  const hasOrderError = useNodeOrderError(id);
+  return (
+    <TooltipWrapper content={<DataList data={displayData} title="Flow Boundary Properties" />}>
+      <div
+        className="group relative"
+        style={{
+          padding: '8px 14px',
+          border: `2px solid ${hasOrderError ? '#ef4444' : '#000'}`,
+          borderRadius: 6,
+          background: 'white',
+          boxShadow: selected ? '0 0 0 2px rgba(0,0,0,0.2)' : '0 1px 3px rgba(0,0,0,0.08)',
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 2,
+          minWidth: 60,
+        }}
+      >
+        <Handle type="target" id="t-top"    position={Position.Top}    className={HandleStyle} />
+        <Handle type="source" id="s-top"    position={Position.Top}    className={HandleStyle} />
+        <Handle type="target" id="t-bottom" position={Position.Bottom} className={HandleStyle} />
+        <Handle type="source" id="s-bottom" position={Position.Bottom} className={HandleStyle} />
+        <Handle type="target" id="t-left"   position={Position.Left}   className={HandleStyle} />
+        <Handle type="source" id="s-left"   position={Position.Left}   className={HandleStyle} />
+        <Handle type="target" id="t-right"  position={Position.Right}  className={HandleStyle} />
+        <Handle type="source" id="s-right"  position={Position.Right}  className={HandleStyle} />
+        <img src={windIcon} style={{ width: 28, height: 28, objectFit: 'contain', pointerEvents: 'none' }} alt="Flow BC" />
+        <div style={{ fontSize: 12, fontWeight: 700, color: '#000', lineHeight: 1 }}>
+          {data.label as React.ReactNode}
+        </div>
+        <div style={{ fontSize: 10, color: '#333', lineHeight: 1 }}>
+          Q-Sched: {data.scheduleNumber as React.ReactNode}
+        </div>
+      </div>
+    </TooltipWrapper>
+  );
+});

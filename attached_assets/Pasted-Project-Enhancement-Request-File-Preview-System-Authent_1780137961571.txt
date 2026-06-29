@@ -1,0 +1,223 @@
+Project Enhancement Request – File Preview System + Authentication Module
+
+You are a senior full-stack engineer. Modify my existing hydraulic network analysis web application without breaking any existing functionality.
+
+Feature 1: INP / OUT File Preview Instead of Direct Download
+Current Behavior
+In the top header under the GENERATE section there are:
+.INP
+.OUT
+Currently clicking these buttons downloads the file immediately.
+Required New Behavior
+A. INP Preview
+
+When the user clicks the .INP button:
+
+Do NOT download the file directly.
+Open a modal/canvas preview inside the application.
+Display the generated INP file content in a scrollable code editor/viewer.
+Use a monospace font.
+Preserve formatting and line breaks.
+Modal size:
+Width: 90%
+Height: 90%
+Centered on screen
+Add top-right controls:
+Download INP button
+Close (X) button
+Download should start only when the user clicks "Download INP".
+Close button should immediately close the preview modal.
+B. OUT Preview
+
+When the user clicks the .OUT button:
+
+Open the same preview modal.
+Load generated OUT file content.
+Show formatted text output.
+Add:
+Download OUT button
+Close (X) button
+Do not auto-download.
+UI Requirements
+Modern professional modal.
+Dark/light theme support.
+Responsive design.
+Smooth open/close animation.
+Reusable component for both INP and OUT previews.
+Feature 2: Authentication System (Login + Registration)
+Goal
+
+The application must require authentication before accessing any functionality.
+
+Application Startup Flow
+
+When application starts:
+
+Show Login Screen first.
+User cannot access dashboard/project area without login.
+Protect all routes/pages.
+If not authenticated:
+Redirect to Login page.
+Registration Screen
+
+Create a professional Register page containing:
+
+Fields
+Full Name
+Email
+Password
+Confirm Password
+Validation
+Full Name
+Required
+Email
+Required
+Valid email format
+Password
+Minimum 8 characters
+Confirm Password
+Must match password
+Registration Logic
+Check whether email already exists.
+If exists:
+Show validation error.
+If not:
+Create user account.
+Store in MongoDB.
+Password must be hashed using bcrypt.
+After successful registration:
+Redirect to Login page.
+Show success message.
+Login Screen
+Fields
+Email
+Password
+Validation
+Email required
+Password required
+Login Logic
+Find user in MongoDB.
+Compare password using bcrypt.
+If invalid:
+Show proper error message:
+"Invalid email or password"
+If valid:
+Create authenticated session/JWT.
+Redirect to application dashboard.
+MongoDB Integration
+
+Use this MongoDB connection string:
+
+MONGODB_URI=mongodb+srv://aiuse1567_db_user:UCsU3tKRCrIPR5wt@cluster0.r34bmyf.mongodb.net/?appName=Cluster0
+Database Structure
+
+Collection: users
+
+{
+  "_id": "ObjectId",
+  "fullName": "Demo User",
+  "email": "demo@example.com",
+  "password": "bcrypt_hashed_password",
+  "createdAt": "Date"
+}
+Demo User
+
+Automatically seed one demo account during first startup.
+
+Demo Credentials
+Email: demo@example.com
+Password: Demo@123
+Login Screen Display
+
+Show a small demo account card:
+
+Demo Account
+
+Email: demo@example.com
+Password: Demo@123
+
+Include a:
+
+Copy Email button
+Copy Password button
+
+For demonstration/testing only.
+
+Security Requirements
+bcrypt password hashing
+JWT authentication
+Protected routes
+Logout functionality
+Session persistence
+Input sanitization
+Server-side validation
+Proper error handling
+UI Requirements
+Login Page
+
+Professional centered card layout:
+
+Company/Product Logo
+Login Form
+Demo Account Section
+Register Link
+Register Page
+
+Professional card layout:
+
+Register Form
+Login Link
+Styling
+Modern SaaS design
+Responsive mobile support
+Clean typography
+Professional spacing
+Consistent with existing application theme
+File Structure Changes
+
+If project is React + Node + MongoDB:
+
+Frontend
+
+Create/Modify:
+
+src/pages/Login.jsx
+src/pages/Register.jsx
+src/components/AuthGuard.jsx
+src/components/FilePreviewModal.jsx
+src/services/authService.js
+src/context/AuthContext.jsx
+src/routes/ProtectedRoutes.jsx
+Backend
+
+Create/Modify:
+
+server/models/User.js
+server/controllers/authController.js
+server/routes/authRoutes.js
+server/middleware/authMiddleware.js
+server/utils/seedDemoUser.js
+server/config/database.js
+Environment
+.env
+
+Add:
+
+MONGODB_URI=mongodb+srv://aiuse1567_db_user:UCsU3tKRCrIPR5wt@cluster0.r34bmyf.mongodb.net/?appName=Cluster0
+JWT_SECRET=change_this_to_secure_secret
+Important Constraints
+Do not break any existing hydraulic network functionality.
+Do not modify simulation logic.
+Keep all existing project save/open features working.
+Keep existing INP/OUT generation logic unchanged.
+Only change the behavior from direct download → preview modal.
+Ensure authentication is required before accessing any project screen.
+Use clean, production-quality code with comments.
+Implement complete backend + frontend integration.
+Seed demo user automatically if not already present.
+Deliver fully working code ready to run in Replit.
+
+After implementation, provide:
+
+List of modified files.
+List of newly created files.

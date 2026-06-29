@@ -1,0 +1,61 @@
+Updated prompt:
+
+---
+
+In the Reservoir element properties panel, add support for two modes of defining the reservoir boundary condition:
+
+**Mode 1 — Fixed Elevation (current behavior):**
+Show the `Reservoir Elevation (HW)` input field. When this mode is selected, generate the following in the .inp file:
+```
+RESERVOIR
+ ID TW
+ ELEV 246
+FINISH
+```
+
+**Mode 2 — HSCHEDULE (time-varying):**
+Add a toggle/radio switch on the Reservoir panel to switch between "Fixed Elevation" and "H Schedule" modes.
+
+When "H Schedule" is selected:
+- **Completely hide and remove the `Reservoir Elevation (HW)` input field from the parameters panel** — it should not be visible at all in this mode
+- Show a dropdown to select which HSCHEDULE number to use (e.g. HSCHEDULE 1, HSCHEDULE 2, etc.) — multiple reservoirs can share the same HSCHEDULE number
+- Show a table of T (time) and H (head) pairs for that selected schedule number
+- Add an **"Add Pair"** button that appends a new empty row to the table
+- Each row should have two inputs: `T` (time) and `H` (head), and a delete/remove button to remove that row
+- **Validation:** Each unique HSCHEDULE number must have at least one T/H pair defined before the .inp can be generated. Show an error message `"HSCHEDULE <n> requires at least one T/H pair"` if not.
+
+**INP output for H Schedule mode:**
+The RESERVOIR block must change from `ELEV <value>` to `HSCHEDULE <n>`, like this:
+```
+RESERVOIR
+ ID TW
+ HSCHEDULE 1
+FINISH
+```
+Multiple reservoirs can reference the same schedule number:
+```
+RESERVOIR
+ ID TW
+ HSCHEDULE 1
+FINISH
+
+RESERVOIR
+ ID RES2
+ HSCHEDULE 1
+FINISH
+```
+Then in the SCHEDULE section, output only one SCHEDULE block per unique HSCHEDULE number:
+```
+SCHEDULE
+  HSCHEDULE 1
+   T    0.0  H   246.0
+   T 9000.0  H   246.0
+FINISH
+```
+
+**Make sure:**
+- When switching back from "H Schedule" to "Fixed Elevation", the `Reservoir Elevation (HW)` field reappears
+- Existing reservoirs using Fixed Elevation are completely unaffected
+- HSCHEDULE SCHEDULE blocks are placed together with other SCHEDULE blocks near the bottom of the .inp, before `GO` and `GOODBYE`
+- Each unique HSCHEDULE number has its T/H pairs stored globally (not per-reservoir), so editing pairs for HSCHEDULE 1 updates it for all reservoirs using it
+- Mode selection, selected schedule number, and all T/H pairs persist on project reload

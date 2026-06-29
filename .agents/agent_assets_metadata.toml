@@ -1,0 +1,26 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "968X9LbH1y7YSjpuF3F1c"
+uri = "file://TCHAR_Block_Mathematical_Derivation_Turbine.docx"
+type = "word_document"
+title = "TCHAR Block — Mathematical Derivation for Turbine"
+
+[[outputs]]
+id = "s_DJjrqwtY4gyu5Zd-Blw"
+uri = "file://PCHAR_Block_Mathematical_Derivation_Pump.docx"
+type = "word_document"
+title = "PCHAR Block — Mathematical Derivation for Pump"
+
+[[outputs]]
+id = "YmWdGhk0xFKNhZUdrsbix"
+uri = "file://WHAMO_Designer_Phase1_Status_Report.docx"
+type = "word_document"
+title = "Phase 1 Status Report (corrected)"
+
+[[outputs]]
+id = "sNoaI7k9j1PWJGx9M4VZ4"
+uri = "file://WHAMO_Phase1_Current_Status.docx"
+type = "word_document"
+title = "WHAMO Phase 1 — Current Status"

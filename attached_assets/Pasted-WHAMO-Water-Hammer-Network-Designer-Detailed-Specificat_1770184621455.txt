@@ -1,0 +1,527 @@
+WHAMO Water Hammer Network Designer - Detailed Specification for Replit
+================================================================================
+
+PROJECT OVERVIEW:
+Build a web-based visual network designer for WHAMO (Water Hammer and Mass Oscillation) hydraulic analysis software. The application allows users to graphically design water distribution networks and automatically generate WHAMO .inp input files.
+
+================================================================================
+TECHNICAL STACK:
+================================================================================
+- Frontend: React.js with TypeScript
+- Canvas Library: React Flow or Konva.js for interactive node-graph editing
+- UI Framework: Tailwind CSS or Material-UI for clean, professional interface
+- State Management: React Context API or Zustand
+- File Generation: Custom JavaScript logic to export .inp format
+- Deployment: Static web app (HTML/CSS/JS bundle)
+
+================================================================================
+APPLICATION LAYOUT:
+================================================================================
+
+SCREEN STRUCTURE (100vh):
+┌─────────────────────────────────────────────────────────────┐
+│  TOP SECTION (30% height) - Control Panel                  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  TOOLBAR (Fixed height ~60px)                         │  │
+│  │  [Add Elements] [Generate .inp] [Clear] [Save/Load]  │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  PROPERTIES PANEL (Remaining top section space)      │  │
+│  │  Form to input properties of selected element        │  │
+│  └──────────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│  BOTTOM SECTION (70% height) - Canvas Area                 │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  INTERACTIVE CANVAS                                   │  │
+│  │  - Drag & drop elements                              │  │
+│  │  - Connect nodes with pipes                          │  │
+│  │  - Pan and zoom                                       │  │
+│  │  - Click elements to edit properties                 │  │
+│  └──────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+
+================================================================================
+ELEMENT TYPES TO IMPLEMENT:
+================================================================================
+
+1. RESERVOIR (HW - Headwater)
+   Visual: Blue rectangle (40x30px) with "HW" text
+   Properties to input:
+   - ID (text, e.g., "HW")
+   - Elevation (number, e.g., 4130.58)
+   Generated .inp format:
+   ```
+   RESERVOIR
+    ID [ID]
+    ELEV [elevation]
+   FINISH
+   ```
+
+2. NODE (Regular)
+   Visual: Small gray circle (10px diameter)
+   Properties:
+   - Node Number (integer, e.g., 2)
+   - Elevation (number, e.g., 3947.44)
+   Generated .inp format:
+   ```
+   NODE [number] ELEV [elevation]
+   ```
+
+3. JUNCTION NODE
+   Visual: Red circle (12px diameter)
+   Properties:
+   - Node Number (integer)
+   - Elevation (number)
+   Generated .inp format:
+   ```
+   JUNCTION AT [number]
+   NODE [number] ELEV [elevation]
+   ```
+
+4. CONDUIT (Pipe)
+   Visual: Blue arrow line connecting two nodes
+   Properties:
+   - ID (text, e.g., "C1")
+   - From Node (dropdown of existing nodes)
+   - To Node (dropdown of existing nodes)
+   - Length (number, e.g., 13405.51)
+   - Diameter (number, e.g., 34.45)
+   - Celerity (number, e.g., 2852.51)
+   - Friction (number, e.g., 0.008)
+   - Number of Segments (integer, default 1)
+   - (Optional) CPLUS (number)
+   - (Optional) CMINUS (number)
+   Generated .inp format:
+   ```
+   CONDUIT ID [ID] LENG [length] DIAM [diameter] CELE [celerity] FRIC [friction] NUMSEG [numseg] FINISH
+   ```
+   In SYSTEM section:
+   ```
+   ELEM [ID] LINK [fromNode] [toNode]
+   ```
+
+5. DUMMY PIPE
+   Visual: Dashed gray line connecting two nodes
+   Properties:
+   - ID (text, e.g., "D1")
+   - From Node
+   - To Node
+   - Diameter (number)
+   - CPLUS (number)
+   - CMINUS (number)
+   Generated .inp format:
+   ```
+   CONDUIT ID [ID]
+    DUMMY
+    DIAMETER [diameter]
+    ADDEDLOSS
+    CPLUS [cplus]
+    CMINUS [cminus]
+   FINISH
+   ```
+
+6. SURGE TANK
+   Visual: Orange rectangle (40x60px) with "ST" text
+   Properties:
+   - ID (text, e.g., "ST")
+   - Node Number (where it's located)
+   - Top Elevation (number)
+   - Bottom Elevation (number)
+   - Diameter (number)
+   - Celerity (number)
+   - Friction (number)
+   Generated .inp format:
+   ```
+   SURGETANK
+    ID [ID] SIMPLE
+    ELTOP [eltop]
+    ELBOTTOM [elbottom]
+    DIAM [diameter]
+    CELERITY [celerity]
+    FRICTION [friction]
+   FINISH
+   ```
+   In SYSTEM section:
+   ```
+   ELEM [ID] AT [nodeNumber]
+   ```
+
+7. FLOW BOUNDARY
+   Visual: Green triangle/arrow at endpoint
+   Properties:
+   - ID (text, e.g., "FB1")
+   - Node Number
+   - Schedule Number (integer, e.g., 1)
+   Generated .inp format:
+   ```
+   FLOWBC ID [ID] QSCHEDULE [scheduleNum] FINISH
+   ```
+
+================================================================================
+TOOLBAR BUTTONS (Top Section):
+================================================================================
+
+1. "Add Reservoir" - Adds reservoir to canvas
+2. "Add Node" - Adds regular node
+3. "Add Junction" - Adds junction node
+4. "Add Conduit" - Draw mode to connect two nodes with pipe
+5. "Add Dummy Pipe" - Draw mode to connect nodes with dummy pipe
+6. "Add Surge Tank" - Adds surge tank
+7. "Add Flow Boundary" - Adds flow boundary
+8. "Delete Selected" - Removes selected element
+9. "Clear All" - Clears entire canvas
+10. "Generate .inp File" - Creates and downloads .inp file
+11. "Save Project" - Saves network as JSON
+12. "Load Project" - Loads saved JSON project
+
+================================================================================
+PROPERTIES PANEL (Top Section):
+================================================================================
+
+DYNAMIC FORM that changes based on selected element:
+
+When NO element selected:
+  - Show "Select an element to edit its properties"
+
+When element IS selected:
+  - Show element type at top (e.g., "Editing: Conduit C1")
+  - Display all relevant input fields for that element type
+  - "Save Changes" button to update the element
+  - "Cancel" button to discard changes
+
+EXAMPLE for Conduit:
+┌─────────────────────────────────────┐
+│ Editing: Conduit                    │
+├─────────────────────────────────────┤
+│ ID: [____C1____]                    │
+│ From Node: [Dropdown: Node 1   ▼]  │
+│ To Node:   [Dropdown: Node 2   ▼]  │
+│ Length:    [____13405.51____]       │
+│ Diameter:  [____34.45____]          │
+│ Celerity:  [____2852.51____]        │
+│ Friction:  [____0.008____]          │
+│ Num Segments: [____5____]           │
+│ CPLUS:     [____0.1____] (optional) │
+│ CMINUS:    [____0.1____] (optional) │
+│                                     │
+│ [Save Changes]  [Cancel]            │
+└─────────────────────────────────────┘
+
+================================================================================
+CANVAS INTERACTIONS:
+================================================================================
+
+USER ACTIONS:
+1. Click toolbar button to enter "add mode"
+2. Click on canvas to place node/element at that position
+3. For pipes: Click start node, then click end node to create connection
+4. Click any element to SELECT it (highlight with blue border)
+5. Selected element properties appear in properties panel
+6. Drag elements to reposition them
+7. Right-click element to delete
+8. Scroll to zoom in/out
+9. Click+drag empty space to pan canvas
+
+VISUAL FEEDBACK:
+- Hover over elements: Show tooltip with ID and basic info
+- Selected element: Blue glow or border
+- Connecting pipe mode: Show dotted line following cursor
+- Nodes show their number/ID as label
+- Pipes show their ID at midpoint
+- All elements display elevation values below them
+
+CANVAS FEATURES:
+- Grid background (optional, for alignment)
+- Snap to grid (optional)
+- Zoom controls (+/- buttons)
+- Pan controls or click-drag to pan
+- Auto-layout option to organize elements
+
+================================================================================
+.INP FILE GENERATION LOGIC:
+================================================================================
+
+When user clicks "Generate .inp File":
+
+1. VALIDATE the network:
+   - Check all nodes have elevations
+   - Check all conduits have from/to nodes that exist
+   - Check no duplicate IDs
+   - Display errors if validation fails
+
+2. GENERATE file in this exact order:
+
+SECTION 1: Header Comments
+```
+C Project Name
+C SYSTEM CONNECTIVITY
+```
+
+SECTION 2: SYSTEM block
+```
+SYSTEM
+
+[For each element in connection order:]
+ELEM [ID] AT [node]  (for reservoirs, surge tanks, flow boundaries)
+ELEM [ID] LINK [from] [to]  (for conduits and dummy pipes)
+JUNCTION AT [nodeNum]  (for junction nodes)
+
+FINISH
+```
+
+SECTION 3: Node Elevations
+```
+[For each node, sorted by number:]
+NODE [number] ELEV [elevation]
+```
+
+SECTION 4: Element Properties
+```
+FINISH
+
+C ELEMENT PROPERTIES
+
+[Reservoir properties]
+[Conduit properties]
+[Dummy pipe properties]
+[Surge tank properties]
+[Flow boundary properties]
+```
+
+SECTION 5: Schedules (default placeholder)
+```
+SCHEDULE
+ QSCHEDULE 1 T 0 Q 3000 T 20 Q 0 T 3000 Q 0
+FINISH
+```
+
+SECTION 6: Output requests (default)
+```
+C OUTPUT REQUEST
+
+HISTORY
+ NODE 2 Q HEAD
+FINISH
+```
+
+SECTION 7: Computational parameters (default)
+```
+C COMPUTATIONAL PARAMETERS
+CONTROL
+ DTCOMP 0.01 DTOUT .1 TMAX 500.0
+FINISH
+```
+
+SECTION 8: Execution
+```
+C EXECUTION CONTROL
+GO
+GOODBYE
+```
+
+3. DOWNLOAD the generated .inp file with filename: "network_[timestamp].inp"
+
+================================================================================
+DATA STRUCTURE:
+================================================================================
+
+Store the network as a JavaScript object:
+
+```javascript
+const networkState = {
+  nodes: [
+    {
+      id: "node_1",
+      type: "reservoir", // or "regular", "junction"
+      nodeNumber: 1,
+      properties: {
+        id: "HW",
+        elevation: 4022.31,
+        reservoirElevation: 4130.58 // only for reservoir
+      },
+      position: { x: 100, y: 100 }
+    },
+    // ... more nodes
+  ],
+  connections: [
+    {
+      id: "conn_1",
+      type: "conduit", // or "dummy"
+      properties: {
+        id: "C1",
+        fromNode: 1,
+        toNode: 2,
+        length: 13405.51,
+        diameter: 34.45,
+        celerity: 2852.51,
+        friction: 0.008,
+        numSegments: 5,
+        cplus: 0.1,
+        cminus: 0.1
+      }
+    },
+    // ... more connections
+  ],
+  specialElements: [
+    {
+      id: "elem_1",
+      type: "surgeTank", // or "flowBoundary"
+      atNode: 100,
+      properties: {
+        id: "ST",
+        topElevation: 4215.88,
+        bottomElevation: 3918.96,
+        diameter: 101.71,
+        celerity: 2499.63,
+        friction: 0.0057
+      },
+      position: { x: 350, y: 200 }
+    }
+    // ... more special elements
+  ]
+}
+```
+
+================================================================================
+UI/UX REQUIREMENTS:
+================================================================================
+
+1. MODERN, CLEAN DESIGN:
+   - Professional color scheme (blues, grays, greens)
+   - Clear visual hierarchy
+   - Consistent spacing and alignment
+   - Responsive design
+
+2. VISUAL CONSISTENCY with provided screenshot:
+   - Reservoir: Blue rectangle with "HW"
+   - Nodes: Small circles with labels
+   - Junctions: Red circles, slightly larger
+   - Pipes: Blue arrows with ID labels
+   - Dummy pipes: Dashed gray lines
+   - Surge tank: Orange rectangle with "ST"
+   - Flow boundaries: Green triangles
+
+3. USER FEEDBACK:
+   - Loading states when generating file
+   - Success/error messages (toast notifications)
+   - Confirm dialogs before destructive actions
+   - Validation errors clearly displayed
+
+4. ACCESSIBILITY:
+   - Keyboard shortcuts for common actions
+   - Clear labels for all inputs
+   - Tooltips for guidance
+   - Undo/Redo functionality (bonus)
+
+================================================================================
+STEP-BY-STEP IMPLEMENTATION GUIDE:
+================================================================================
+
+PHASE 1: Basic Setup
+1. Create React app with TypeScript
+2. Set up Tailwind CSS or Material-UI
+3. Create two-panel layout (30% top, 70% bottom)
+4. Implement basic toolbar with buttons
+
+PHASE 2: Canvas Implementation
+5. Integrate React Flow or Konva for canvas
+6. Implement drag-and-drop for nodes
+7. Add zoom and pan controls
+8. Create custom node components for each element type
+
+PHASE 3: Properties Panel
+9. Create dynamic form component
+10. Implement state management for selected element
+11. Add form validation
+12. Connect form updates to canvas elements
+
+PHASE 4: Network Building
+13. Implement "add node" functionality
+14. Implement "connect nodes with pipe" functionality
+15. Add visual connections with arrows
+16. Enable element selection and editing
+17. Add delete functionality
+
+PHASE 5: File Generation
+18. Create .inp file generator function
+19. Implement validation logic
+20. Add download functionality
+21. Test with sample networks
+
+PHASE 6: Save/Load
+22. Implement JSON export of network state
+23. Implement JSON import to restore network
+24. Add localStorage for auto-save (optional)
+
+PHASE 7: Polish
+25. Add tooltips and help text
+26. Improve visual styling
+27. Add keyboard shortcuts
+28. Test thoroughly and fix bugs
+
+================================================================================
+DELIVERABLES:
+================================================================================
+
+1. Fully functional web application
+2. Clean, commented code
+3. README with usage instructions
+4. Sample .inp file for testing
+5. Responsive design that works on desktop browsers
+
+================================================================================
+EXAMPLE USAGE FLOW:
+================================================================================
+
+1. User opens application
+2. Clicks "Add Reservoir" button
+3. Clicks on canvas → Reservoir appears
+4. Properties panel shows reservoir form
+5. User enters: ID="HW", Elevation=4130.58
+6. Clicks "Save Changes"
+7. Clicks "Add Node" button
+8. Clicks on canvas → Node appears
+9. Enters: Node Number=2, Elevation=3947.44
+10. Clicks "Add Conduit" button
+11. Clicks reservoir, then clicks node 2 → Pipe appears with arrow
+12. Properties panel shows conduit form
+13. User enters all pipe properties
+14. Repeats to build complete network
+15. Clicks "Generate .inp File" button
+16. Application validates network
+17. Downloads "network_20260204_120530.inp" file
+18. User can open .inp file and verify format matches WHAMO requirements
+
+================================================================================
+IMPORTANT NOTES:
+================================================================================
+
+- The .inp file format is VERY specific - maintain exact spacing and structure
+- All WHAMO keywords must be UPPERCASE
+- Indentation uses spaces (typically 1 space for nested content)
+- Each section must end with "FINISH"
+- The SYSTEM section defines connectivity, properties come later
+- Node numbers must be integers
+- Element IDs are case-sensitive strings
+- Comments start with "C" (uppercase)
+
+================================================================================
+TESTING CHECKLIST:
+================================================================================
+
+□ Can add all 7 element types
+□ Can connect nodes with pipes
+□ Can edit element properties
+□ Can delete elements
+□ Can clear canvas
+□ Generated .inp file has correct structure
+□ Generated .inp file has all elements
+□ Can save and load projects
+□ Canvas zoom/pan works smoothly
+□ UI is responsive and clean
+□ Validation prevents invalid networks
+□ Error messages are clear and helpful
+
+================================================================================
+
+This specification provides everything needed to build the WHAMO network designer. The application should be intuitive, visually appealing, and generate perfectly formatted .inp files that can be directly used with WHAMO software.

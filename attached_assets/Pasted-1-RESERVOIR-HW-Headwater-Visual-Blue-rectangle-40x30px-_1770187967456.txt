@@ -1,0 +1,111 @@
+1. RESERVOIR (HW - Headwater)
+   Visual: Blue rectangle (40x30px) with "HW" text
+   Properties to input:
+   - ID (text, e.g., "HW")
+   - Elevation (number, e.g., 4130.58)
+   Generated .inp format:
+   ```
+   RESERVOIR
+    ID [ID]
+    ELEV [elevation]
+   FINISH
+   ```
+
+2. NODE (Regular)
+   Visual: Small gray circle (10px diameter)
+   Properties:
+   - Node Number (integer, e.g., 2)
+   - Elevation (number, e.g., 3947.44)
+   Generated .inp format:
+   ```
+   NODE [number] ELEV [elevation]
+   ```
+
+3. JUNCTION NODE
+   Visual: Red circle (12px diameter)
+   Properties:
+   - Node Number (integer)
+   - Elevation (number)
+   Generated .inp format:
+   ```
+   JUNCTION AT [number]
+   NODE [number] ELEV [elevation]
+   ```
+
+4. CONDUIT (Pipe)
+   Visual: Blue arrow line connecting two nodes
+   Properties:
+   - ID (text, e.g., "C1")
+   - From Node (dropdown of existing nodes)
+   - To Node (dropdown of existing nodes)
+   - Length (number, e.g., 13405.51)
+   - Diameter (number, e.g., 34.45)
+   - Celerity (number, e.g., 2852.51)
+   - Friction (number, e.g., 0.008)
+   - Number of Segments (integer, default 1)
+   - (Optional) CPLUS (number)
+   - (Optional) CMINUS (number)
+   Generated .inp format:
+   ```
+   CONDUIT ID [ID] LENG [length] DIAM [diameter] CELE [celerity] FRIC [friction] NUMSEG [numseg] FINISH
+   ```
+   In SYSTEM section:
+   ```
+   ELEM [ID] LINK [fromNode] [toNode]
+   ```
+
+5. DUMMY PIPE
+   Visual: Dashed gray line connecting two nodes
+   Properties:
+   - ID (text, e.g., "D1")
+   - From Node
+   - To Node
+   - Diameter (number)
+   - CPLUS (number)
+   - CMINUS (number)
+   Generated .inp format:
+   ```
+   CONDUIT ID [ID]
+    DUMMY
+    DIAMETER [diameter]
+    ADDEDLOSS
+    CPLUS [cplus]
+    CMINUS [cminus]
+   FINISH
+   ```
+
+6. SURGE TANK
+   Visual: Orange rectangle (40x60px) with "ST" text
+   Properties:
+   - ID (text, e.g., "ST")
+   - Node Number (where it's located)
+   - Top Elevation (number)
+   - Bottom Elevation (number)
+   - Diameter (number)
+   - Celerity (number)
+   - Friction (number)
+   Generated .inp format:
+   ```
+   SURGETANK
+    ID [ID] SIMPLE
+    ELTOP [eltop]
+    ELBOTTOM [elbottom]
+    DIAM [diameter]
+    CELERITY [celerity]
+    FRICTION [friction]
+   FINISH
+   ```
+   In SYSTEM section:
+   ```
+   ELEM [ID] AT [nodeNumber]
+   ```
+
+7. FLOW BOUNDARY
+   Visual: Green triangle/arrow at endpoint
+   Properties:
+   - ID (text, e.g., "FB1")
+   - Node Number
+   - Schedule Number (integer, e.g., 1)
+   Generated .inp format:
+   ```
+   FLOWBC ID [ID] QSCHEDULE [scheduleNum] FINISH

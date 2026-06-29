@@ -1,0 +1,581 @@
+# Feature Enhancement Request – Advanced Excel Import/Export + Help & User Guide Module
+
+You are a senior full-stack engineer working on an existing Hydraulic Network Analysis software. Implement the following enhancements without breaking any existing functionality.
+
+---
+
+# Feature 1: Advanced Excel Export & Import Synchronization
+
+## Current Problem
+
+The Flex Table can export data to Excel, but the exported file does not fully preserve:
+
+* Dropdown values
+* Validation rules
+* Element-specific parameters
+* Data structure
+* Relationships between Flex Table and network elements
+
+When the Excel file is edited and imported back, the application does not completely update the corresponding network elements and side-panel properties.
+
+---
+
+## Required Solution
+
+### A. Excel Export Enhancement
+
+When the user clicks:
+
+**Flex Table → Export Excel**
+
+Generate a professional Excel workbook containing all project data.
+
+### Requirements
+
+Each element type should have its own worksheet:
+
+#### Sheet 1 – Reservoir
+
+Columns:
+
+* Unit
+* Label
+* Node #
+* Elevation
+* Comment
+
+#### Sheet 2 – Node
+
+Columns:
+
+* Unit
+* Label
+* Node #
+* Elevation
+* Comment
+
+#### Sheet 3 – Junction
+
+Columns:
+
+* Unit
+* Label
+* Node #
+* Elevation
+* Demand
+* Comment
+
+#### Sheet 4 – Conduit
+
+Columns:
+
+* Unit
+* Label
+* Pipe Type
+* Node #
+* Diameter
+* Length
+* Wave Speed
+* Friction
+* Elevation
+* Comment
+
+#### Sheet 5 – Valve
+
+All valve parameters
+
+#### Sheet 6 – Pump
+
+All pump parameters
+
+#### Sheet 7 – Surge Tank
+
+All surge tank parameters
+
+#### Sheet 8 – Flow Boundary Condition
+
+All Flow BC parameters
+
+#### Sheet 9 – Turbine
+
+All turbine parameters
+
+---
+
+### Excel Formatting Requirements
+
+Preserve:
+
+* Blue header styling
+* Column widths
+* Data validation
+* Drop-down lists
+* Number formatting
+* Required field indicators
+
+### Dropdown Support
+
+Excel dropdowns must be included for:
+
+* Pipe Type
+* Valve Type
+* Tank Type
+* Unit System
+* Shape Type
+* Any configurable enum field
+
+Example:
+
+Pipe Type:
+
+* Conduit
+* Pipe
+* Penstock
+* Tunnel
+
+Tank Type:
+
+* Simple
+* Surge
+* Closed
+* Open
+
+Use Excel Data Validation lists.
+
+---
+
+### B. Excel Import Enhancement
+
+When user imports an edited Excel file:
+
+#### Validation
+
+Validate:
+
+* Required fields
+* Numeric ranges
+* Duplicate IDs
+* Invalid dropdown values
+
+Display clear error messages.
+
+---
+
+### Import Mapping Logic
+
+When importing:
+
+#### Node Sheet
+
+Update:
+
+* Node Labels
+* Elevations
+* Properties
+
+#### Junction Sheet
+
+Update:
+
+* Junction data
+* Demands
+* Elevations
+
+#### Conduit Sheet
+
+Update:
+
+* Diameter
+* Length
+* Friction
+* Wave Speed
+
+#### Pump Sheet
+
+Update all pump properties.
+
+#### Valve Sheet
+
+Update all valve properties.
+
+#### Surge Tank Sheet
+
+Update all tank properties.
+
+---
+
+### Canvas Synchronization
+
+After import:
+
+Automatically update:
+
+1. Flex Table
+2. Left-side element properties panel
+3. Network diagram
+4. Selected element details
+5. Internal project JSON
+
+No page refresh should be required.
+
+---
+
+### Real-Time Element Sync
+
+Example:
+
+If Excel changes:
+
+Node 5 Elevation:
+
+1000 → 1200
+
+After import:
+
+* Flex Table shows 1200
+* Node properties show 1200
+* Project JSON stores 1200
+
+Example:
+
+Conduit Diameter:
+
+36 → 42
+
+After import:
+
+* Pipe updates visually
+* Flex Table updates
+* Properties panel updates
+
+---
+
+### Import Summary Dialog
+
+After successful import show:
+
+Import Completed
+
+Updated:
+
+* 30 Nodes
+* 25 Conduits
+* 2 Reservoirs
+* 3 Surge Tanks
+
+Warnings:
+
+* 1 invalid row skipped
+
+---
+
+# Feature 2: Help & User Guide Module
+
+## Header Enhancement
+
+In the top toolbar (see uploaded UI)
+
+Current:
+
+New | Open | Save | Save As | Arrange
+
+Add:
+
+Help
+
+Place it immediately to the right of:
+
+Arrange
+
+Use:
+
+* Help icon
+* Tooltip: User Guide
+
+---
+
+## Help Screen
+
+When user clicks Help:
+
+Open a full-screen modal/page similar to Flex Table.
+
+### Layout
+
+Left Navigation Panel
+
+Sections:
+
+1. Getting Started
+2. Creating a Project
+3. Network Elements
+4. Connections
+5. Flex Table
+6. Excel Import/Export
+7. Simulation
+8. INP/OUT Files
+9. Keyboard Shortcuts
+10. Troubleshooting
+
+---
+
+## Main Content Area
+
+Show professional documentation.
+
+---
+
+### Getting Started
+
+Explain:
+
+* Create New Project
+* Open Existing Project
+* Save Project
+
+---
+
+### Network Elements
+
+For each element provide:
+
+#### Reservoir
+
+Purpose
+
+How to place
+
+Required parameters
+
+Element image/icon
+
+---
+
+#### Node
+
+Purpose
+
+How to connect
+
+Parameters
+
+Element image/icon
+
+---
+
+#### Junction
+
+Purpose
+
+Usage
+
+Parameters
+
+Element image/icon
+
+---
+
+#### Conduit
+
+Purpose
+
+Diameter
+
+Length
+
+Wave Speed
+
+Element image/icon
+
+---
+
+#### Pump
+
+Purpose
+
+Connection steps
+
+Configuration
+
+Element image/icon
+
+---
+
+#### Valve
+
+Purpose
+
+Valve settings
+
+Configuration
+
+Element image/icon
+
+---
+
+#### Surge Tank
+
+Purpose
+
+Tank types
+
+Configuration
+
+Element image/icon
+
+---
+
+#### Turbine
+
+Purpose
+
+Characteristics
+
+Configuration
+
+Element image/icon
+
+---
+
+#### Flow BC
+
+Purpose
+
+Boundary conditions
+
+Configuration
+
+Element image/icon
+
+---
+
+## Connection Guide
+
+Explain visually:
+
+How to connect:
+
+* Node → Conduit
+* Reservoir → Conduit
+* Pump → Conduit
+* Valve → Conduit
+* Surge Tank → Node
+
+Use diagrams and existing element icons.
+
+---
+
+## Keyboard Shortcut Section
+
+Display table:
+
+| Shortcut    | Action                  |
+| ----------- | ----------------------- |
+| Tab         | Next field              |
+| Shift + Tab | Previous field          |
+| Ctrl + S    | Save Project            |
+| Ctrl + O    | Open Project            |
+| Delete      | Remove selected element |
+| Esc         | Cancel current action   |
+| Arrow Keys  | Move canvas             |
+| Mouse Wheel | Zoom                    |
+| F           | Focus selected element  |
+| Ctrl + Z    | Undo                    |
+| Ctrl + Y    | Redo                    |
+
+Include all supported shortcuts.
+
+---
+
+## Excel Import/Export Guide
+
+Explain:
+
+* Export workflow
+* Edit in Excel
+* Import workflow
+* Validation rules
+
+---
+
+## INP / OUT Guide
+
+Explain:
+
+* Generate INP
+* Preview INP
+* Download INP
+* Generate OUT
+* Preview OUT
+* Download OUT
+
+---
+
+## Download PDF Button
+
+Add button:
+
+Download User Manual PDF
+
+Top-right corner of Help screen.
+
+When clicked:
+
+Generate a professional PDF manual containing:
+
+* All help sections
+* Element images/icons
+* Tables
+* Keyboard shortcuts
+* Import/export instructions
+* INP/OUT guide
+
+PDF should include:
+
+* Cover page
+* Table of contents
+* Page numbers
+* Software version
+
+---
+
+## Technical Requirements
+
+### Frontend
+
+Create/Modify:
+
+src/components/HelpCenter.jsx
+src/components/UserGuide.jsx
+src/components/ExcelImportExportManager.jsx
+src/components/ImportSummaryModal.jsx
+
+---
+
+### Backend
+
+Create/Modify:
+
+server/services/excelExportService.js
+server/services/excelImportService.js
+server/services/pdfManualGenerator.js
+
+---
+
+## Important Constraints
+
+1. Do not break existing hydraulic calculations.
+2. Do not break simulation engine.
+3. Preserve existing Flex Table functionality.
+4. Preserve existing Excel export functionality while enhancing it.
+5. Ensure imported Excel data fully synchronizes with:
+
+   * Flex Table
+   * Canvas
+   * Properties Panel
+   * Project JSON
+6. Use production-quality code.
+7. Support large projects (1000+ elements).
+8. Generate professional Excel files with dropdown validation.
+9. Generate a professional user manual PDF with images and instructions.
+10. Deliver a fully working implementation ready for production.

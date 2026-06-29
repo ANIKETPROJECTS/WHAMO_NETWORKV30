@@ -1,0 +1,155 @@
+Got it 👍 — only **syntax structure** and **ACCUTEST types**, no code discussion.
+
+Below is the clean structural explanation you can use.
+
+---
+
+# C COMPUTATIONAL PARAMETERS — CONTROL Block Syntax
+
+The CONTROL section in a WHAMO `.inp` file must follow this structure:
+
+```
+C COMPUTATIONAL PARAMETERS
+CONTROL
+   <control lines>
+FINISH
+```
+
+Inside the `CONTROL` block, only the following line types are allowed:
+
+---
+
+# 1️⃣ Time Control Line Syntax
+
+```
+DTCOMP <value> DTOUT <value> TMAX <value>
+```
+
+This line can appear:
+
+* Once (single-stage simulation)
+* Multiple times (multi-stage simulation)
+* In any number (no fixed limit)
+
+---
+
+## ✅ Single-Stage Structure
+
+```
+C COMPUTATIONAL PARAMETERS
+CONTROL
+ DTCOMP <value> DTOUT <value> TMAX <value>
+FINISH
+```
+
+---
+
+## ✅ Multi-Stage Structure
+
+```
+C COMPUTATIONAL PARAMETERS
+CONTROL
+ DTCOMP <value> DTOUT <value> TMAX <value>
+ DTCOMP <value> DTOUT <value> TMAX <value>
+ DTCOMP <value> DTOUT <value> TMAX <value>
+FINISH
+```
+
+Each `DTCOMP` line defines a new simulation stage.
+
+---
+
+# 2️⃣ ACCUTEST Syntax
+
+The accuracy directive syntax is:
+
+```
+ACCUTEST FULL
+```
+
+or
+
+```
+ACCUTEST PARTIAL
+```
+
+or
+
+```
+ACCUTEST NONE
+```
+
+---
+
+## ✅ ACCUTEST Types
+
+| Type                   | Syntax             |
+| ---------------------- | ------------------ |
+| Full accuracy checking | `ACCUTEST FULL`    |
+| Moderate checking      | `ACCUTEST PARTIAL` |
+| No accuracy checking   | `ACCUTEST NONE`    |
+
+---
+
+# 3️⃣ Placement Rules
+
+`ACCUTEST` may appear:
+
+* After all DTCOMP lines
+* Before DTCOMP lines
+* Between DTCOMP lines
+
+Example:
+
+```
+CONTROL
+ ACCUTEST FULL
+ DTCOMP <value> DTOUT <value> TMAX <value>
+ DTCOMP <value> DTOUT <value> TMAX <value>
+FINISH
+```
+
+or
+
+```
+CONTROL
+ DTCOMP <value> DTOUT <value> TMAX <value>
+ ACCUTEST PARTIAL
+FINISH
+```
+
+---
+
+# 4️⃣ Structural Rules
+
+✔ Block must start with:
+
+```
+C COMPUTATIONAL PARAMETERS
+CONTROL
+```
+
+✔ Block must end with:
+
+```
+FINISH
+```
+
+✔ At least one `DTCOMP` line is typically required
+✔ `ACCUTEST` line is optional
+✔ Multiple `DTCOMP` lines are allowed
+
+---
+
+# 🔥 Final Structural Possibilities
+
+The CONTROL block can contain:
+
+* One or more `DTCOMP` lines
+* Zero or one (or multiple, though not recommended) `ACCUTEST` lines
+* In flexible order
+* Always enclosed between `CONTROL` and `FINISH`
+
+---
+
+That’s the complete syntax structure of the CONTROL section.

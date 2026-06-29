@@ -1,0 +1,1763 @@
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { useNetworkStore, type UnitSystem, type PcharType } from '@/lib/store';
+import { PIPE_MATERIALS, PIPE_MATERIALS_BY_ID } from '@/lib/pipe-materials';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+import { X, Check, Plus, Trash2, Download, Upload } from 'lucide-react';
+import {
+  exportTabToExcel, importTabFromExcel, exportAllSheetsToExcel, importAllSheetsFromExcel,
+  TAB_COLS, type FilterKey as ExcelFilterKey, type ExportRow, type ImportSheetSummary, type QScheduleUpdate,
+} from '@/lib/excel-io';
+
+interface FlexTableProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+const CACHEABLE_FIELDS = new Set([
+  'length', 'diameter', 'elevation', 'reservoirElevation',
+  'tankTop', 'tankBottom', 'initialWaterLevel', 'riserDiameter',
+  'riserTop', 'distance', 'celerity', 'area', 'pipeWT', 'pipeE',
+]);
+
+function buildCacheUpdate(
+  existingCache: Record<string, any>,
+  currentUnit: UnitSystem,
+  key: string,
+  numericValue: number
+): Record<string, any> {
+  const otherUnit: UnitSystem = currentUnit === 'FPS' ? 'SI' : 'FPS';
+  return {
+    ...existingCache,
+    [currentUnit]: { ...(existingCache[currentUnit] || {}), [key]: numericValue },
+    [otherUnit]: existingCache[otherUnit]
+      ? { ...existingCache[otherUnit], [key]: undefined }
+      : existingCache[otherUnit],
+  };
+}
+
+type FilterKey =
+  | 'all' | 'conduit' | 'dummy'
+  | 'node' | 'reservoir' | 'junction' | 'surgeTank' | 'flowBoundary' | 'pump' | 'checkValve' | 'turbine';
+
+interface UnifiedRow {
+  id: string;
+  kind: 'edge' | 'node';
+  subType: string;
+  data: Record<string, any>;
+}
+
+const NODE_TYPE_LABEL: Record<string, string> = {
+  reservoir: 'Reservoir', node: 'Node', junction: 'Junction',
+  surgeTank: 'Surge Tank', flowBoundary: 'Flow BC',
+  pump: 'Pump', checkValve: 'Check Valve', turbine: 'Turbine',
+  conduit: 'Conduit', dummy: 'Dummy Pipe',
+};
+const TYPE_BADGE: Record<string, string> = {
+  reservoir:    'bg-blue-600 text-white',
+  node:         'bg-slate-600 text-white',
+  junction:     'bg-red-500 text-white',
+  surgeTank:    'bg-orange-500 text-white',
+  flowBoundary: 'bg-green-600 text-white',
+  pump:         'bg-orange-600 text-white',
+  checkValve:   'bg-violet-600 text-white',
+  turbine:      'bg-teal-600 text-white',
+  conduit:      'bg-indigo-600 text-white',
+  dummy:        'bg-purple-600 text-white',
+};
+
+const FILTER_CHIPS: { key: FilterKey; label: string }[] = [
+  { key: 'all',         label: 'All'          },
+  { key: 'conduit',     label: 'Conduit'      },
+  { key: 'dummy',       label: 'Dummy Pipe'   },
+  { key: 'node',        label: 'Node'         },
+  { key: 'reservoir',   label: 'Reservoir'    },
+  { key: 'junction',    label: 'Junction'     },
+  { key: 'surgeTank',   label: 'Surge Tank'   },
+  { key: 'flowBoundary',label: 'Flow BC'      },
+  { key: 'pump',        label: 'Pump'         },
+  { key: 'checkValve',  label: 'Check Valve'  },
+  { key: 'turbine',     label: 'Turbine'      },
+];
+
+function matchesFilter(row: UnifiedRow, filter: FilterKey): boolean {
+  if (filter === 'all') return true;
+  return row.subType === filter;
+}
+
+type ColKey = string;
+
+const COLS: Record<FilterKey, ColKey[]> = {
+  all:         ['rowNum','type','unitToggle','label','pipeType','nodeNum','diameter','length','celerity','friction','elevation','comment'],
+  conduit:     ['rowNum','unitToggle','label','pipeType','material','length','diameter','celerity','friction','manningsN','segments','inclSegments',
+                 'hasAddedLoss','cplus','cminus','pipeE','pipeWT','variable','distance','area','d','a','comment'],
+  dummy:       ['rowNum','unitToggle','label','pipeType','diameter','hasAddedLoss','cplus','cminus','comment'],
+  node:        ['rowNum','type','unitToggle','label','nodeNum','elevation','comment'],
+  reservoir:   ['rowNum','unitToggle','label','nodeNum','elevation','mode','resElev','hSchedNum','thPairs','comment'],
+  junction:    ['rowNum','unitToggle','label','nodeNum','elevation','comment'],
+  surgeTank:   ['rowNum','unitToggle','label','nodeNum','elevation','stType','tankTop','tankBot',
+                 'initWaterLevel','riserDiam','riserTop','hasShape','diameter',
+                 'celerity','friction','hasAddedLoss','cplus','cminus','shapePairs','comment'],
+  flowBoundary:['rowNum','unitToggle','label','nodeNum','elevation','schedNum','qSchedPairs','comment'],
+  pump:        ['rowNum','unitToggle','label','nodeNum','elevation','pumpStatus','pumpType','rq','rhead','rspeed','rtorque','wr2','comment'],
+  checkValve:  ['rowNum','unitToggle','label','nodeNum','elevation','valveStatus','valveDiam','comment'],
+  turbine:     ['rowNum','unitToggle','label','nodeNum','elevation','turbineType','syncSpeed','turbineDiam','turbWr2','turbFriction','windage','operationMode','vScheduleNum','vSchedulePairs','comment'],
+};
+
+// ─── Pairs editor state ───────────────────────────────────────────────────────
+interface PairsEditorState {
+  open: boolean;
+  rowId: string;
+  rowKind: 'node' | 'edge';
+  pairsType: 'qSchedule' | 'hSchedule' | 'shapePairs' | 'vSchedule';
+  scheduleNumber?: number;
+}
+
+// ─── Cell components ──────────────────────────────────────────────────────────
+
+function NACell({ minW = 'min-w-[80px]' }: { minW?: string }) {
+  return (
+    <td className={cn('border-r border-slate-200 px-2 py-[7px] bg-slate-50/60', minW)}>
+      <span className="text-[13px] text-black italic select-none">NA</span>
+    </td>
+  );
+}
+
+interface EditableCellProps {
+  value: string | number | undefined;
+  type?: 'text' | 'number';
+  onChange?: (val: string) => void;
+  readOnly?: boolean;
+  dimmed?: boolean;
+  testId?: string;
+  minW?: string;
+}
+
+function EditableCell({ value, type = 'text', onChange, readOnly, dimmed, testId, minW = 'min-w-[80px]' }: EditableCellProps) {
+  const [editing, setEditing] = useState(false);
+  const [localVal, setLocalVal] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const tdRef = useRef<HTMLTableCellElement>(null);
+  const display = value === undefined || value === null ? '' : String(value);
+
+  // Show NA for dimmed/read-only cells with no value
+  const isNA = dimmed && (display === '' || display === undefined);
+
+  if (isNA && !editing) {
+    return <NACell minW={minW} />;
+  }
+
+  const isEditable = !readOnly && !!onChange;
+
+  const startEdit = () => {
+    if (!isEditable) return;
+    setLocalVal(display);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.select(), 0);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    if (onChange && localVal !== display) onChange(localVal);
+  };
+
+  const getAdjacentCell = (direction: 'next' | 'prev' | 'up' | 'down'): HTMLElement | null => {
+    const currentTd = tdRef.current;
+    if (!currentTd) return null;
+
+    if (direction === 'next' || direction === 'prev') {
+      const allCells = Array.from(document.querySelectorAll<HTMLElement>('td[data-editable="true"]'));
+      const idx = allCells.indexOf(currentTd);
+      return direction === 'next' ? (allCells[idx + 1] ?? null) : (allCells[idx - 1] ?? null);
+    }
+
+    // Up / Down — same column index, adjacent row
+    const currentTr = currentTd.parentElement;
+    if (!currentTr) return null;
+    const colIndex = Array.from(currentTr.children).indexOf(currentTd);
+    const siblingTr = (direction === 'down'
+      ? currentTr.nextElementSibling
+      : currentTr.previousElementSibling) as HTMLElement | null;
+    if (!siblingTr) return null;
+    const siblingTd = siblingTr.children[colIndex] as HTMLElement | null;
+    return siblingTd?.dataset?.editable === 'true' ? siblingTd : null;
+  };
+
+  const navigateToCell = (td: HTMLElement | null) => {
+    if (td) setTimeout(() => td.focus(), 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      setEditing(false);
+      return;
+    }
+    if (e.key === 'Enter') {
+      const target = getAdjacentCell('down');
+      inputRef.current?.blur();
+      navigateToCell(target);
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const target = getAdjacentCell(e.shiftKey ? 'prev' : 'next');
+      inputRef.current?.blur();
+      navigateToCell(target);
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const target = getAdjacentCell('down');
+      inputRef.current?.blur();
+      navigateToCell(target);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const target = getAdjacentCell('up');
+      inputRef.current?.blur();
+      navigateToCell(target);
+    }
+  };
+
+  return (
+    <td
+      ref={tdRef}
+      data-editable={isEditable ? 'true' : undefined}
+      tabIndex={isEditable ? 0 : -1}
+      className={cn(
+        'border-r border-slate-200 relative',
+        minW,
+        isEditable ? 'cursor-text hover:bg-blue-50/50 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400' : 'cursor-default',
+        dimmed && 'bg-slate-50 opacity-40'
+      )}
+      onClick={startEdit}
+      onFocus={(e) => {
+        // Only trigger startEdit when the td itself is focused (keyboard nav),
+        // not when a child element (the input) gains focus.
+        if (e.target === e.currentTarget) startEdit();
+      }}
+    >
+      {editing ? (
+        <input
+          ref={inputRef}
+          data-testid={testId}
+          className="w-full h-[30px] px-2 text-[13px] border-0 outline-none ring-1 ring-blue-500 ring-inset bg-white"
+          type="text"
+          inputMode={type === 'number' ? 'decimal' : 'text'}
+          value={localVal}
+          onChange={e => setLocalVal(e.target.value)}
+          onBlur={commit}
+          onKeyDown={handleKeyDown}
+        />
+      ) : (
+        <span className="block px-2 py-[7px] text-[13px] truncate">{display}</span>
+      )}
+    </td>
+  );
+}
+
+interface SelectCellProps {
+  value: string;
+  options: { label: string; value: string }[];
+  onChange?: (val: string) => void;
+  dimmed?: boolean;
+  testId?: string;
+  minW?: string;
+}
+
+function SelectCell({ value, options, onChange, dimmed, testId, minW = 'min-w-[110px]' }: SelectCellProps) {
+  return (
+    <td className={cn('border-r border-slate-200 p-0', minW, dimmed && 'opacity-40 bg-slate-50')}>
+      <Select value={value || options[0]?.value} onValueChange={onChange}>
+        <SelectTrigger
+          data-testid={testId}
+          disabled={!onChange}
+          className="h-[30px] border-0 rounded-none bg-transparent text-[13px] focus:ring-1 focus:ring-blue-400 focus:ring-inset w-full px-2"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </td>
+  );
+}
+
+interface BoolCellProps {
+  value: boolean;
+  onChange?: (val: boolean) => void;
+  trueLabel?: string;
+  falseLabel?: string;
+  dimmed?: boolean;
+  testId?: string;
+}
+
+function BoolCell({ value, onChange, trueLabel = 'Yes', falseLabel = 'No', dimmed, testId }: BoolCellProps) {
+  return (
+    <td
+      className={cn(
+        'border-r border-slate-200 px-2 py-[7px] min-w-[64px]',
+        onChange ? 'cursor-pointer hover:bg-blue-50/50' : 'cursor-default',
+        dimmed && 'opacity-40 bg-slate-50'
+      )}
+      onClick={() => onChange?.(!value)}
+      data-testid={testId}
+    >
+      {value ? (
+        <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600">
+          <Check className="h-3 w-3" />{trueLabel}
+        </span>
+      ) : (
+        <span className="text-[10px] text-black">{falseLabel}</span>
+      )}
+    </td>
+  );
+}
+
+function SummaryCell({ count, label }: { count: number; label: string }) {
+  return (
+    <td className="border-r border-slate-200 px-2 py-[7px] min-w-[80px] cursor-default">
+      {count > 0
+        ? <span className="text-[10px] text-blue-600 font-medium">{count} {label}{count !== 1 ? 's' : ''}</span>
+        : <span className="text-[10px] text-slate-300">—</span>
+      }
+    </td>
+  );
+}
+
+// ─── Unit Toggle Cell ─────────────────────────────────────────────────────────
+interface UnitToggleCellProps {
+  rowId: string;
+  rowKind: 'node' | 'edge';
+  effectiveUnit: UnitSystem;
+  globalUnit: UnitSystem;
+  onSetUnit: (id: string, kind: 'node' | 'edge', unit: UnitSystem) => void;
+}
+
+function UnitToggleCell({ rowId, rowKind, effectiveUnit, globalUnit, onSetUnit }: UnitToggleCellProps) {
+  const isOverridden = (effectiveUnit !== globalUnit);
+  return (
+    <td className="border-r border-slate-200 px-1.5 py-[5px] min-w-[84px]">
+      <div className={cn('inline-flex items-center gap-0.5', isOverridden && 'ring-1 ring-amber-400 rounded-full px-0.5')}>
+        <button
+          data-testid={`cell-unit-si-${rowId}`}
+          className={cn(
+            'px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors',
+            effectiveUnit === 'SI' ? 'bg-[#1a73e8] text-white' : 'bg-slate-100 text-black hover:bg-slate-200'
+          )}
+          onClick={e => { e.stopPropagation(); onSetUnit(rowId, rowKind, 'SI'); }}
+        >SI</button>
+        <button
+          data-testid={`cell-unit-fps-${rowId}`}
+          className={cn(
+            'px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors',
+            effectiveUnit === 'FPS' ? 'bg-[#1a73e8] text-white' : 'bg-slate-100 text-black hover:bg-slate-200'
+          )}
+          onClick={e => { e.stopPropagation(); onSetUnit(rowId, rowKind, 'FPS'); }}
+        >FPS</button>
+      </div>
+    </td>
+  );
+}
+
+// ─── Pairs Preview Cell ───────────────────────────────────────────────────────
+interface PairPreview {
+  time: number | string;
+  value: number | string;
+}
+
+function PairsPreviewCell({
+  pairs,
+  onEdit,
+  applicable = true,
+}: {
+  pairs: PairPreview[];
+  onEdit: () => void;
+  applicable?: boolean;
+}) {
+  if (!applicable) {
+    return <NACell minW="min-w-[130px]" />;
+  }
+
+  const preview = pairs.slice(0, 2);
+  const extra = pairs.length - 2;
+
+  return (
+    <td className="border-r border-slate-200 px-2 py-[6px] min-w-[130px]">
+      <div className="flex items-center gap-1 flex-wrap">
+        {pairs.length === 0 ? (
+          <button
+            className="text-[10px] text-blue-500 hover:text-blue-700 hover:underline font-medium"
+            onClick={e => { e.stopPropagation(); onEdit(); }}
+            data-testid="pairs-add"
+          >
+            + Add pairs
+          </button>
+        ) : (
+          <>
+            {preview.map((p, i) => (
+              <span
+                key={i}
+                className="text-[10px] text-slate-600 bg-slate-100 rounded px-1 py-0.5 whitespace-nowrap font-mono"
+              >
+                {p.time},{String(p.value).substring(0, 7)}
+              </span>
+            ))}
+            <button
+              className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-medium whitespace-nowrap"
+              onClick={e => { e.stopPropagation(); onEdit(); }}
+              data-testid="pairs-viewmore"
+            >
+              {extra > 0 ? `+${extra} more` : 'Edit'}
+            </button>
+          </>
+        )}
+      </div>
+    </td>
+  );
+}
+
+// ─── Pairs Editor Modal ───────────────────────────────────────────────────────
+interface PairRow {
+  time: string;
+  value: string;
+}
+
+interface PairsEditorModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  timeLabel: string;
+  valueLabel: string;
+  initialPairs: PairRow[];
+  onSave: (pairs: PairRow[]) => void;
+}
+
+function PairsEditorModal({
+  open, onClose, title, timeLabel, valueLabel, initialPairs, onSave,
+}: PairsEditorModalProps) {
+  const [rows, setRows] = useState<PairRow[]>([]);
+
+  useEffect(() => {
+    if (open) setRows(initialPairs.map(p => ({ ...p })));
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChange = (idx: number, field: 'time' | 'value', val: string) => {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+  };
+  const handleAdd = () => setRows(prev => [...prev, { time: '0', value: '0' }]);
+  const handleDelete = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx));
+  const handleSave = () => { onSave(rows); onClose(); };
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent
+        className="max-w-sm w-full z-[300] flex flex-col gap-0 p-0 overflow-hidden"
+        data-testid="pairs-editor-modal"
+      >
+        <DialogHeader className="px-4 py-3 border-b bg-white">
+          <DialogTitle className="text-sm font-bold text-slate-800">{title}</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex flex-col overflow-y-auto max-h-72 px-4 py-3 gap-1.5">
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_1fr_28px] gap-2 text-[11px] font-semibold text-slate-500 pb-1">
+            <span>Time (T)</span>
+            <span>{valueLabel}</span>
+            <span />
+          </div>
+
+          {rows.length === 0 && (
+            <p className="text-[11px] text-slate-400 text-center py-6 italic">No pairs yet. Click "+ Add Point" below.</p>
+          )}
+
+          {rows.map((row, idx) => (
+            <div key={idx} className="grid grid-cols-[1fr_1fr_28px] gap-2 items-center">
+              <input
+                data-testid={`pair-time-${idx}`}
+                className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                type="text" inputMode="decimal" step="any"
+                value={row.time}
+                onChange={e => handleChange(idx, 'time', e.target.value)}
+              />
+              <input
+                data-testid={`pair-value-${idx}`}
+                className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                type="text" inputMode="decimal" step="any"
+                value={row.value}
+                onChange={e => handleChange(idx, 'value', e.target.value)}
+              />
+              <button
+                data-testid={`pair-delete-${idx}`}
+                className="text-red-400 hover:text-red-600 flex items-center justify-center"
+                onClick={() => handleDelete(idx)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between px-4 py-3 border-t bg-slate-50">
+          <Button
+            variant="outline" size="sm"
+            className="h-7 text-xs gap-1"
+            onClick={handleAdd}
+            data-testid="pairs-add-point"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Point
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClose} data-testid="pairs-cancel">
+              Cancel
+            </Button>
+            <Button size="sm" className="h-7 text-xs bg-[#1a73e8] hover:bg-[#1557b0]" onClick={handleSave} data-testid="pairs-save">
+              Save
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Column header config ────────────────────────────────────────────────────
+function ColHeader({ col, unit }: { col: ColKey; unit: UnitSystem }) {
+  const L = unit === 'FPS' ? 'ft' : 'm';
+  const V = unit === 'FPS' ? 'ft/s' : 'm/s';
+  const A = unit === 'FPS' ? 'ft²' : 'm²';
+  const P = unit === 'FPS' ? 'psi' : 'Pa';
+
+  const labels: Record<string, string> = {
+    rowNum: '#', type: 'Type', unitToggle: 'Unit', label: 'Label', pipeType: 'Pipe Type',
+    nodeNum: 'Node #', diameter: `Diameter (${L})`, length: `Length (${L})`,
+    celerity: `Wave Speed (${V})`, friction: 'Friction', segments: 'Segments',
+    inclSegments: 'Incl. in INP', hasAddedLoss: 'Added Loss',
+    cplus: 'CPLUS', cminus: 'CMINUS',
+    pipeE: `E (${P})`, pipeWT: `WT (${L})`,
+    manningsN: "Manning's n", variable: 'VARIABLE',
+    material: 'Pipe Material',
+    distance: `Distance (${L})`, area: `Area (${A})`,
+    d: `D (${L})`, a: `A (${A})`,
+    elevation: `Elevation (${L})`, resElev: `Res. Elev. (${L})`,
+    mode: 'BC Mode', hSchedNum: 'H Sched #', thPairs: 'T/H Pairs',
+    stType: 'Tank Type', tankTop: `Top Elev. (${L})`, tankBot: `Bot. Elev. (${L})`,
+    initWaterLevel: `HTANK (${L})`, riserDiam: `Riser Diam (${L})`,
+    riserTop: `Riser Top (${L})`, hasShape: 'Use SHAPE', shapePairs: 'Shape Pairs',
+    schedNum: 'Q Sched #', qSchedPairs: 'Q Schedule',
+    pumpStatus: 'Status', pumpType: 'PCHAR Type',
+    rq: `RQ (${V})`, rhead: `RHEAD (${L})`, rspeed: 'RSPEED (RPM)', rtorque: 'RTOROUE', wr2: 'WR²',
+    valveStatus: 'Status', valveDiam: `Diam (${L})`,
+    turbineType: 'TCHAR Type', syncSpeed: 'Sync Speed (RPM)', turbineDiam: `Diameter (${L})`, turbWr2: 'WR²',
+    turbFriction: 'Friction', windage: 'Windage', operationMode: 'Mode', vScheduleNum: 'V Sched #',
+    vSchedulePairs: 'V Schedule (T/G pairs)',
+    comment: 'Comment',
+  };
+  return (
+    <th className="border-r border-blue-400 px-2 py-2 text-left font-semibold text-white whitespace-nowrap text-xs select-none">
+      {labels[col] ?? col}
+    </th>
+  );
+}
+
+// ─── Row cell renderer ────────────────────────────────────────────────────────
+function RowCells({
+  col, row, idx, unit, globalUnit, changeEdge, changeNode, hSchedules, qSchedules, vSchedules, onOpenPairsEditor, onSetUnit,
+  isHighlighted, onHighlightRow, pcharData,
+}: {
+  col: ColKey;
+  row: UnifiedRow;
+  idx: number;
+  unit: UnitSystem;
+  globalUnit: UnitSystem;
+  changeEdge: (f: string, v: string) => void;
+  changeNode: (f: string, v: string) => void;
+  hSchedules: any[];
+  qSchedules: Record<number, { time: number; flow: number | string }[]>;
+  vSchedules: Record<number, { t: number; g: number }[]>;
+  onOpenPairsEditor: (rowId: string, rowKind: 'node' | 'edge', pairsType: 'qSchedule' | 'hSchedule' | 'shapePairs' | 'vSchedule', scheduleNumber?: number) => void;
+  onSetUnit: (id: string, kind: 'node' | 'edge', unit: UnitSystem) => void;
+  isHighlighted: boolean;
+  onHighlightRow: () => void;
+  pcharData: Record<number, PcharType>;
+}) {
+  const d = row.data;
+  const isEdge = row.kind === 'edge';
+  const isDummy = row.subType === 'dummy';
+  const isConduit = row.subType === 'conduit';
+  const isRes = row.subType === 'reservoir';
+  const isSurge = row.subType === 'surgeTank';
+  const isFlow = row.subType === 'flowBoundary';
+  const isPump = row.subType === 'pump';
+  const isCheckValve = row.subType === 'checkValve';
+  const isTurbine = row.subType === 'turbine';
+
+  // Each row uses its own unit (per-element override) or falls back to global
+  const rowUnit: UnitSystem = (d.unit as UnitSystem) || unit;
+
+  const change = isEdge ? changeEdge : changeNode;
+  const fmt = (v: any) => (v === undefined || v === null || v === '') ? '' : String(parseFloat(Number(v).toFixed(8)));
+
+  const hSchedNum = d.hScheduleNumber || 1;
+  const hSched = hSchedules.find((s: any) => s.number === hSchedNum);
+  const thPairs: PairPreview[] = (hSched?.points || []).map((p: any) => ({ time: p.time, value: p.head }));
+  const qSchedNum = Number(d.scheduleNumber || 1);
+  const qSchedPoints = (qSchedules[qSchedNum] as any[]) || (d.schedulePoints as any[]) || [];
+  const qPairs: PairPreview[] = qSchedPoints.map((p: any) => ({ time: p.time, value: p.flow }));
+  const shapePairs: PairPreview[] = (d.shape as any[] || []).map((p: any) => ({ time: p.e, value: p.a }));
+
+  switch (col) {
+    case 'rowNum': return (
+      <td
+        key={col}
+        data-testid={`cell-rownum-${row.id}`}
+        className={cn(
+          'border-r px-2 py-[7px] text-center text-xs w-9 select-none cursor-pointer transition-colors',
+          isHighlighted
+            ? 'bg-[#1a73e8] text-white border-[#1557b0] font-bold'
+            : 'border-slate-200 text-slate-400 hover:bg-blue-100 hover:text-blue-700'
+        )}
+        onClick={e => { e.stopPropagation(); onHighlightRow(); }}
+      >
+        {idx + 1}
+      </td>
+    );
+    case 'unitToggle': return (
+      <UnitToggleCell
+        key={col}
+        rowId={row.id}
+        rowKind={row.kind}
+        effectiveUnit={rowUnit}
+        globalUnit={globalUnit}
+        onSetUnit={onSetUnit}
+      />
+    );
+    case 'type': return (
+      <td key={col} className="border-r border-slate-200 px-2 py-1 min-w-[100px]">
+        <span className={cn('inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap', TYPE_BADGE[row.subType] || 'bg-slate-600 text-white')}>
+          {NODE_TYPE_LABEL[row.subType] || row.subType}
+        </span>
+      </td>
+    );
+    case 'label': return (
+      <EditableCell key={col} value={d.label} onChange={v => change('label', v)} testId={`cell-label-${row.id}`} />
+    );
+    case 'pipeType': {
+      if (!isEdge) return <NACell key={col} />;
+      return (
+        <SelectCell key={col} value={d.type || 'conduit'} options={[{label:'Conduit',value:'conduit'},{label:'Dummy Pipe',value:'dummy'}]}
+          onChange={v => changeEdge('type', v)} testId={`cell-ptype-${row.id}`} />
+      );
+    }
+    case 'nodeNum': return (
+      <EditableCell key={col} value={!isEdge ? (d.nodeNumber ?? '') : ''} type="text" inputMode="decimal"
+        readOnly={isEdge} dimmed={isEdge} onChange={v => changeNode('nodeNumber', v)} testId={`cell-nodenum-${row.id}`} />
+    );
+    case 'diameter': {
+      const surgeShapeActive = isSurge && d.hasShape;
+      return (
+        <EditableCell key={col} value={fmt(d.diameter)} type="text" inputMode="decimal"
+          readOnly={(!isEdge && !isSurge) || surgeShapeActive}
+          dimmed={(!isEdge && !isSurge && !isConduit && !isDummy) || surgeShapeActive}
+          onChange={v => {
+            change('diameter', v);
+            if (isEdge) {
+              const newDiam = parseFloat(v);
+              if (!isNaN(newDiam) && newDiam > 0) {
+                const C0 = rowUnit === 'SI' ? 1440 : 4720;
+                const Kw = rowUnit === 'SI' ? 2.07e9 : 3e5;
+                const K  = rowUnit === 'SI' ? 124.58 : 185;
+                const E  = parseFloat(d.pipeE) || 0;
+                const WT = parseFloat(d.pipeWT) || 0;
+                if (E > 0 && WT > 0) {
+                  const c = C0 / Math.sqrt(1 + (Kw / E) * (newDiam / WT));
+                  changeEdge('celerity', parseFloat(c.toFixed(4)).toString());
+                }
+                const n = parseFloat(d.manningsN);
+                if (!isNaN(n) && n > 0) {
+                  const f = (K * n * n) / Math.pow(newDiam, 1 / 3);
+                  changeEdge('friction', parseFloat(f.toFixed(6)).toString());
+                } else {
+                  const f = parseFloat(d.friction);
+                  if (!isNaN(f) && f > 0) {
+                    const nNew = Math.sqrt((f * Math.pow(newDiam, 1 / 3)) / K);
+                    changeEdge('manningsN', parseFloat(nNew.toFixed(6)).toString());
+                  }
+                }
+              }
+            }
+          }} testId={`cell-diameter-${row.id}`} />
+      );
+    }
+    case 'length': return (
+      <EditableCell key={col} value={isEdge && !isDummy ? fmt(d.length) : ''} type="text" inputMode="decimal"
+        readOnly={!isEdge || isDummy} dimmed={!isEdge || isDummy}
+        onChange={v => changeEdge('length', v)} testId={`cell-length-${row.id}`} />
+    );
+    case 'celerity': return (
+      <EditableCell key={col} value={fmt(d.celerity)} type="text" inputMode="decimal"
+        readOnly={!isEdge && !isSurge} dimmed={!isEdge && !isSurge}
+        onChange={v => change('celerity', v)} testId={`cell-celerity-${row.id}`} />
+    );
+    case 'friction': return (
+      <EditableCell key={col} value={fmt(d.friction)} type="text" inputMode="decimal"
+        readOnly={!isEdge && !isSurge} dimmed={!isEdge && !isSurge}
+        onChange={v => change('friction', v)} testId={`cell-friction-${row.id}`} />
+    );
+    case 'material': {
+      if (!isConduit) return <NACell key={col} />;
+      const currentId = d.materialId ? String(d.materialId) : '__none__';
+      const options = [
+        { label: '-- None --', value: '__none__' },
+        ...PIPE_MATERIALS.map(m => ({ label: m.label, value: String(m.id) })),
+      ];
+      const propagateToSiblings = (updater: (e: any, eUnit: UnitSystem) => any) => {
+        const lbl = (d.label as string) || '';
+        const { edges: allEdges, updateEdgeData: upd, applyMaterialToAllConduits: all } =
+          useNetworkStore.getState();
+        if (!all && !lbl) return;
+        allEdges
+          .filter(e =>
+            e.id !== row.id &&
+            e.data?.type === 'conduit' &&
+            (all || (e.data?.label as string) === lbl)
+          )
+          .forEach(e => {
+            const eUnit: UnitSystem = (e.data?.unit as UnitSystem) || globalUnit;
+            const update = updater(e, eUnit);
+            if (update) upd(e.id, update);
+          });
+      };
+      const onChange = (idStr: string) => {
+        if (idStr === '__none__') {
+          changeEdge('materialId', '');
+          propagateToSiblings(() => ({ materialId: '' }));
+          return;
+        }
+        const id = parseInt(idStr, 10);
+        const m = PIPE_MATERIALS_BY_ID[id];
+        if (!m) return;
+        changeEdge('materialId', String(id));
+        const n = m.manningsN;
+        changeEdge('manningsN', String(n));
+        const eVal = rowUnit === 'SI' ? m.youngsModulus_Pa : m.youngsModulus_psi;
+        if (eVal > 0) changeEdge('pipeE', String(eVal));
+        const D = parseFloat(d.diameter) || 0;
+        if (D > 0 && n > 0) {
+          const K = rowUnit === 'SI' ? 124.58 : 185;
+          const f = (K * n * n) / Math.pow(D, 1 / 3);
+          changeEdge('friction', parseFloat(f.toFixed(6)).toString());
+        }
+        const WT = parseFloat(d.pipeWT) || 0;
+        if (eVal > 0 && WT > 0 && D > 0) {
+          const C0 = rowUnit === 'SI' ? 1440 : 4720;
+          const Kw = rowUnit === 'SI' ? 2.07e9 : 3e5;
+          const c = C0 / Math.sqrt(1 + (Kw / eVal) * (D / WT));
+          changeEdge('celerity', parseFloat(c.toFixed(4)).toString());
+        }
+        // Propagate to all conduits with the same label
+        propagateToSiblings((e, eUnit) => {
+          const eEval = eUnit === 'SI' ? m.youngsModulus_Pa : m.youngsModulus_psi;
+          const upd: any = { materialId: String(id), manningsN: n };
+          if (eEval > 0) upd.pipeE = eEval;
+          const eD = parseFloat(String((e.data as any)?.diameter)) || 0;
+          if (eD > 0 && n > 0) {
+            const K = eUnit === 'SI' ? 124.58 : 185;
+            upd.friction = parseFloat(((K * n * n) / Math.pow(eD, 1 / 3)).toFixed(6));
+          }
+          const eWT = parseFloat(String((e.data as any)?.pipeWT)) || 0;
+          if (eEval > 0 && eWT > 0 && eD > 0) {
+            const C0 = eUnit === 'SI' ? 1440 : 4720;
+            const Kw = eUnit === 'SI' ? 2.07e9 : 3e5;
+            upd.celerity = parseFloat((C0 / Math.sqrt(1 + (Kw / eEval) * (eD / eWT))).toFixed(4));
+          }
+          return upd;
+        });
+      };
+      return (
+        <SelectCell
+          key={col}
+          value={currentId}
+          options={options}
+          onChange={onChange}
+          minW="min-w-[180px]"
+          testId={`cell-material-${row.id}`}
+        />
+      );
+    }
+    case 'manningsN': {
+      const mN = (() => {
+        if (d.manningsN != null && d.manningsN !== '') return String(d.manningsN);
+        const f = parseFloat(d.friction) || 0;
+        const diam = parseFloat(d.diameter) || 0;
+        const K = rowUnit === 'FPS' ? 185 : 124.58;
+        if (f > 0 && diam > 0) return parseFloat(Math.sqrt((f * Math.pow(diam, 1 / 3)) / K).toFixed(6)).toString();
+        return '';
+      })();
+      return (
+        <EditableCell key={col} value={mN} type="text" inputMode="decimal"
+          readOnly={!isConduit} dimmed={!isConduit}
+          onChange={v => changeEdge('manningsN', v)} testId={`cell-manningsn-${row.id}`} />
+      );
+    }
+    case 'segments': return (
+      <EditableCell key={col} value={isEdge && !isDummy ? fmt(d.numSegments) : ''} type="text" inputMode="decimal"
+        readOnly={!isEdge || isDummy} dimmed={!isEdge || isDummy}
+        onChange={v => changeEdge('numSegments', v)} testId={`cell-segments-${row.id}`} />
+    );
+    case 'inclSegments': return (
+      <BoolCell key={col} value={d.includeNumSegments !== false} trueLabel="Yes" falseLabel="No"
+        dimmed={!isConduit} onChange={isConduit ? v => changeEdge('includeNumSegments', String(v)) : undefined} testId={`cell-inclseg-${row.id}`} />
+    );
+    case 'hasAddedLoss': return (
+      <BoolCell key={col} value={!!d.hasAddedLoss} trueLabel="Yes" falseLabel="No"
+        onChange={v => change('hasAddedLoss', String(v))} testId={`cell-addedloss-${row.id}`} />
+    );
+    case 'cplus': return (
+      <EditableCell key={col} value={d.cplus ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.hasAddedLoss} dimmed={!d.hasAddedLoss}
+        onChange={v => change('cplus', v)} testId={`cell-cplus-${row.id}`} />
+    );
+    case 'cminus': return (
+      <EditableCell key={col} value={d.cminus ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.hasAddedLoss} dimmed={!d.hasAddedLoss}
+        onChange={v => change('cminus', v)} testId={`cell-cminus-${row.id}`} />
+    );
+    case 'pipeE': return (
+      <EditableCell key={col} value={d.pipeE ?? ''} type="text" inputMode="decimal"
+        readOnly={!isConduit} dimmed={!isConduit}
+        onChange={v => changeEdge('pipeE', v)} testId={`cell-pipee-${row.id}`} />
+    );
+    case 'pipeWT': return (
+      <EditableCell key={col} value={d.pipeWT ?? ''} type="text" inputMode="decimal"
+        readOnly={!isConduit} dimmed={!isConduit}
+        onChange={v => changeEdge('pipeWT', v)} testId={`cell-pipewt-${row.id}`} />
+    );
+    case 'variable': return (
+      <BoolCell key={col} value={!!d.variable} trueLabel="Yes" falseLabel="No"
+        dimmed={!isConduit} onChange={isConduit ? v => changeEdge('variable', String(v)) : undefined} testId={`cell-variable-${row.id}`} />
+    );
+    case 'distance': return (
+      <EditableCell key={col} value={d.distance ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.variable} dimmed={!d.variable}
+        onChange={v => changeEdge('distance', v)} testId={`cell-distance-${row.id}`} />
+    );
+    case 'area': return (
+      <EditableCell key={col} value={d.area ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.variable} dimmed={!d.variable}
+        onChange={v => changeEdge('area', v)} testId={`cell-area-${row.id}`} />
+    );
+    case 'd': return (
+      <EditableCell key={col} value={d.d ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.variable} dimmed={!d.variable}
+        onChange={v => changeEdge('d', v)} testId={`cell-d-${row.id}`} />
+    );
+    case 'a': return (
+      <EditableCell key={col} value={d.a ?? ''} type="text" inputMode="decimal"
+        readOnly={!d.variable} dimmed={!d.variable}
+        onChange={v => changeEdge('a', v)} testId={`cell-a-${row.id}`} />
+    );
+    case 'elevation': return (
+      <EditableCell key={col} value={!isEdge ? fmt(d.elevation) : ''} type="text" inputMode="decimal"
+        readOnly={isEdge} dimmed={isEdge}
+        onChange={v => changeNode('elevation', v)} testId={`cell-elev-${row.id}`} />
+    );
+    case 'mode': return (
+      <SelectCell key={col} value={d.mode || 'fixed'} options={[{label:'Fixed Elevation',value:'fixed'},{label:'H Schedule',value:'schedule'}]}
+        dimmed={!isRes} onChange={isRes ? v => changeNode('mode', v) : undefined} testId={`cell-mode-${row.id}`} />
+    );
+    case 'resElev': return (
+      <EditableCell key={col} value={isRes && d.mode !== 'schedule' ? fmt(d.reservoirElevation) : ''} type="text" inputMode="decimal"
+        readOnly={!isRes || d.mode === 'schedule'} dimmed={!isRes || d.mode === 'schedule'}
+        onChange={v => changeNode('reservoirElevation', v)} testId={`cell-reselev-${row.id}`} />
+    );
+    case 'hSchedNum': return (
+      <EditableCell key={col} value={isRes && d.mode === 'schedule' ? (d.hScheduleNumber ?? 1) : ''} type="text" inputMode="decimal"
+        readOnly={!isRes || d.mode !== 'schedule'} dimmed={!isRes || d.mode !== 'schedule'}
+        onChange={v => changeNode('hScheduleNumber', v)} testId={`cell-hschednum-${row.id}`} />
+    );
+    case 'thPairs': {
+      const applicable = isRes && d.mode === 'schedule';
+      return (
+        <PairsPreviewCell
+          key={col}
+          pairs={applicable ? thPairs : []}
+          applicable={applicable}
+          onEdit={() => onOpenPairsEditor(row.id, row.kind, 'hSchedule', hSchedNum)}
+        />
+      );
+    }
+    case 'stType': return (
+      <SelectCell key={col} value={d.type_st || 'SIMPLE'}
+        options={[{label:'SIMPLE',value:'SIMPLE'},{label:'DIFFERENTIAL',value:'DIFFERENTIAL'},{label:'AIRTANK',value:'AIRTANK'}]}
+        dimmed={!isSurge} onChange={isSurge ? v => changeNode('type_st', v) : undefined} testId={`cell-sttype-${row.id}`} />
+    );
+    case 'tankTop': return (
+      <EditableCell key={col} value={isSurge ? fmt(d.tankTop) : ''} type="text" inputMode="decimal"
+        readOnly={!isSurge} dimmed={!isSurge}
+        onChange={v => changeNode('tankTop', v)} testId={`cell-tanktop-${row.id}`} />
+    );
+    case 'tankBot': return (
+      <EditableCell key={col} value={isSurge ? fmt(d.tankBottom) : ''} type="text" inputMode="decimal"
+        readOnly={!isSurge} dimmed={!isSurge}
+        onChange={v => changeNode('tankBottom', v)} testId={`cell-tankbot-${row.id}`} />
+    );
+    case 'initWaterLevel': return (
+      <EditableCell key={col} value={isSurge && (d.type_st === 'AIRTANK' || d.type_st === 'DIFFERENTIAL') ? fmt(d.initialWaterLevel) : ''} type="text" inputMode="decimal"
+        readOnly={!isSurge || (d.type_st !== 'AIRTANK' && d.type_st !== 'DIFFERENTIAL')}
+        dimmed={!isSurge || (d.type_st !== 'AIRTANK' && d.type_st !== 'DIFFERENTIAL')}
+        onChange={v => changeNode('initialWaterLevel', v)} testId={`cell-htank-${row.id}`} />
+    );
+    case 'riserDiam': return (
+      <EditableCell key={col} value={isSurge && d.type_st === 'DIFFERENTIAL' ? fmt(d.riserDiameter) : ''} type="text" inputMode="decimal"
+        readOnly={!isSurge || d.type_st !== 'DIFFERENTIAL'} dimmed={!isSurge || d.type_st !== 'DIFFERENTIAL'}
+        onChange={v => changeNode('riserDiameter', v)} testId={`cell-riserdiam-${row.id}`} />
+    );
+    case 'riserTop': return (
+      <EditableCell key={col} value={isSurge && d.type_st === 'DIFFERENTIAL' ? fmt(d.riserTop) : ''} type="text" inputMode="decimal"
+        readOnly={!isSurge || d.type_st !== 'DIFFERENTIAL'} dimmed={!isSurge || d.type_st !== 'DIFFERENTIAL'}
+        onChange={v => changeNode('riserTop', v)} testId={`cell-risertop-${row.id}`} />
+    );
+    case 'hasShape': return (
+      <BoolCell key={col} value={!!d.hasShape} trueLabel="Yes" falseLabel="No"
+        dimmed={!isSurge} onChange={isSurge ? v => changeNode('hasShape', String(v)) : undefined} testId={`cell-hasshape-${row.id}`} />
+    );
+    case 'shapePairs': return (
+      <PairsPreviewCell
+        key={col}
+        pairs={isSurge && d.hasShape ? shapePairs : []}
+        applicable={isSurge && !!d.hasShape}
+        onEdit={() => onOpenPairsEditor(row.id, row.kind, 'shapePairs')}
+      />
+    );
+    case 'schedNum': return (
+      <EditableCell key={col} value={isFlow ? (d.scheduleNumber ?? '') : ''} type="text" inputMode="decimal"
+        readOnly={!isFlow} dimmed={!isFlow}
+        onChange={v => changeNode('scheduleNumber', v)} testId={`cell-schednum-${row.id}`} />
+    );
+    case 'qSchedPairs': return (
+      <PairsPreviewCell
+        key={col}
+        pairs={isFlow ? qPairs : []}
+        applicable={isFlow}
+        onEdit={() => onOpenPairsEditor(row.id, row.kind, 'qSchedule')}
+      />
+    );
+    case 'pumpStatus': return (
+      <SelectCell key={col} value={d.pumpStatus || 'ACTIVE'}
+        options={[{label:'ACTIVE',value:'ACTIVE'},{label:'INACTIVE',value:'INACTIVE'}]}
+        dimmed={!isPump} onChange={isPump ? v => changeNode('pumpStatus', v) : undefined} testId={`cell-pumpstatus-${row.id}`} />
+    );
+    case 'pumpType': {
+      const pcharTypeOptions = Object.keys(pcharData).map(Number).sort((a, b) => a - b)
+        .map(t => ({ label: `TYPE ${t}`, value: String(t) }));
+      return (
+        <SelectCell key={col} value={String(d.pumpType ?? 1)}
+          options={pcharTypeOptions.length > 0 ? pcharTypeOptions : [{label:'TYPE 1',value:'1'}]}
+          dimmed={!isPump} onChange={isPump ? v => changeNode('pumpType', v) : undefined} testId={`cell-pumptype-${row.id}`} />
+      );
+    }
+    case 'rq': return (
+      <EditableCell key={col} value={isPump ? fmt(d.rq ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isPump} dimmed={!isPump}
+        onChange={v => changeNode('rq', v)} testId={`cell-rq-${row.id}`} />
+    );
+    case 'rhead': return (
+      <EditableCell key={col} value={isPump ? fmt(d.rhead ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isPump} dimmed={!isPump}
+        onChange={v => changeNode('rhead', v)} testId={`cell-rhead-${row.id}`} />
+    );
+    case 'rspeed': return (
+      <EditableCell key={col} value={isPump ? fmt(d.rspeed ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isPump} dimmed={!isPump}
+        onChange={v => changeNode('rspeed', v)} testId={`cell-rspeed-${row.id}`} />
+    );
+    case 'rtorque': return (
+      <EditableCell key={col} value={isPump ? fmt(d.rtorque ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isPump} dimmed={!isPump}
+        onChange={v => changeNode('rtorque', v)} testId={`cell-rtorque-${row.id}`} />
+    );
+    case 'wr2': return (
+      <EditableCell key={col} value={isPump ? fmt(d.wr2 ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isPump} dimmed={!isPump}
+        onChange={v => changeNode('wr2', v)} testId={`cell-wr2-${row.id}`} />
+    );
+    case 'valveStatus': return (
+      <SelectCell key={col} value={d.valveStatus || 'OPEN'}
+        options={[{label:'OPEN',value:'OPEN'},{label:'CLOSED',value:'CLOSED'}]}
+        dimmed={!isCheckValve} onChange={isCheckValve ? v => changeNode('valveStatus', v) : undefined} testId={`cell-valvestatus-${row.id}`} />
+    );
+    case 'valveDiam': return (
+      <EditableCell key={col} value={isCheckValve ? fmt(d.valveDiam ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isCheckValve} dimmed={!isCheckValve}
+        onChange={v => changeNode('valveDiam', v)} testId={`cell-valvediam-${row.id}`} />
+    );
+    case 'turbineType': return (
+      <EditableCell key={col} value={isTurbine ? String(d.turbineType ?? 1) : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('turbineType', v)} testId={`cell-turbtype-${row.id}`} />
+    );
+    case 'syncSpeed': return (
+      <EditableCell key={col} value={isTurbine ? fmt(d.syncSpeed ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('syncSpeed', v)} testId={`cell-syncspeed-${row.id}`} />
+    );
+    case 'turbineDiam': return (
+      <EditableCell key={col} value={isTurbine ? fmt(d.turbineDiameter ?? '') : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('turbineDiameter', v)} testId={`cell-turbdiam-${row.id}`} />
+    );
+    case 'turbWr2': return (
+      <EditableCell key={col} value={isTurbine ? fmt(d.wr2 ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('wr2', v)} testId={`cell-turbwr2-${row.id}`} />
+    );
+    case 'turbFriction': return (
+      <EditableCell key={col} value={isTurbine ? fmt(d.turbFriction ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('turbFriction', v)} testId={`cell-turbfriction-${row.id}`} />
+    );
+    case 'windage': return (
+      <EditableCell key={col} value={isTurbine ? fmt(d.windage ?? 0) : ''} type="text" inputMode="decimal"
+        readOnly={!isTurbine} dimmed={!isTurbine}
+        onChange={v => change('windage', v)} testId={`cell-windage-${row.id}`} />
+    );
+    case 'operationMode': return (
+      <SelectCell key={col} value={d.operationMode || 'TURBINE'}
+        options={[{label:'TURBINE',value:'TURBINE'},{label:'GENERATE',value:'GENERATE'},{label:'TURBGOV',value:'TURBGOV'},{label:'EMERGENCY',value:'EMERGENCY'}]}
+        dimmed={!isTurbine} onChange={isTurbine ? v => change('operationMode', v) : undefined} testId={`cell-opmode-${row.id}`} />
+    );
+    case 'vScheduleNum': {
+      const needsVSched = d.operationMode === 'GENERATE' || d.operationMode === 'TURBGOV' || d.operationMode === 'EMERGENCY';
+      return (
+        <EditableCell key={col} value={isTurbine ? String(d.vScheduleNumber ?? 1) : ''} type="text" inputMode="decimal"
+          readOnly={!isTurbine || !needsVSched}
+          dimmed={!isTurbine || !needsVSched}
+          onChange={v => change('vScheduleNumber', v)} testId={`cell-vschednum-${row.id}`} />
+      );
+    }
+    case 'vSchedulePairs': {
+      const opMode = d.operationMode as string;
+      const hasVSched = isTurbine && (opMode === 'GENERATE' || opMode === 'TURBGOV' || opMode === 'EMERGENCY');
+      if (!hasVSched) return <NACell key={col} minW="min-w-[150px]" />;
+      const schedNum = Number(d.vScheduleNumber ?? 1);
+      const pts: { t: number; g: number }[] = vSchedules[schedNum] || [];
+      const pairs: PairPreview[] = pts.map(p => ({ time: p.t, value: p.g }));
+      return (
+        <PairsPreviewCell
+          key={col}
+          pairs={pairs}
+          applicable={true}
+          onEdit={() => onOpenPairsEditor(row.id, row.kind, 'vSchedule', schedNum)}
+        />
+      );
+    }
+    case 'comment': return (
+      <EditableCell key={col} value={d.comment ?? ''} onChange={v => change('comment', v)}
+        testId={`cell-comment-${row.id}`} minW="min-w-[160px]" />
+    );
+    default: return <td key={col} className="border-r border-slate-200 px-2 py-[7px] text-xs text-slate-300">—</td>;
+  }
+}
+
+// ─── Main table ───────────────────────────────────────────────────────────────
+function UnifiedTable({
+  rows, filter, unit, hSchedules, qSchedules, vSchedules, pcharData,
+  onChangeEdge, onChangeNode, onSelectEdge, onSelectNode, onOpenPairsEditor, onSetUnit,
+}: {
+  rows: UnifiedRow[];
+  filter: FilterKey;
+  unit: UnitSystem;
+  hSchedules: any[];
+  qSchedules: Record<number, { time: number; flow: number | string }[]>;
+  vSchedules: Record<number, { t: number; g: number }[]>;
+  pcharData: Record<number, PcharType>;
+  onChangeEdge: (id: string, field: string, val: string, data: any) => void;
+  onChangeNode: (id: string, field: string, val: string, data: any) => void;
+  onSelectEdge: (id: string) => void;
+  onSelectNode: (id: string) => void;
+  onOpenPairsEditor: (rowId: string, rowKind: 'node' | 'edge', pairsType: 'qSchedule' | 'hSchedule' | 'shapePairs' | 'vSchedule', scheduleNumber?: number) => void;
+  onSetUnit: (id: string, kind: 'node' | 'edge', unit: UnitSystem) => void;
+}) {
+  const cols = COLS[filter] ?? COLS.all;
+  const [highlightedRowId, setHighlightedRowId] = useState<string | null>(null);
+
+  // Clear highlight when filter changes
+  useEffect(() => { setHighlightedRowId(null); }, [filter]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center justify-center flex-1 text-slate-400 text-sm bg-white border border-slate-200 rounded">
+        No elements match the selected filter.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-auto flex-1">
+      <table className="min-w-max w-full border-collapse text-[13px]" style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 500 }}>
+        <thead className="sticky top-0 z-10 bg-[#1a73e8]">
+          <tr>
+            {cols.map(col => <ColHeader key={col} col={col} unit={unit} />)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, idx) => {
+            const isEven = idx % 2 === 0;
+            const isHighlighted = highlightedRowId === row.id;
+            const changeEdge = (f: string, v: string) => onChangeEdge(row.id, f, v, row.data);
+            const changeNode = (f: string, v: string) => onChangeNode(row.id, f, v, row.data);
+            return (
+              <tr
+                key={row.id}
+                data-testid={`row-${row.kind}-${row.id}`}
+                className={cn(
+                  'border-b transition-colors cursor-pointer',
+                  isHighlighted
+                    ? 'bg-blue-50 border-blue-200 outline outline-1 outline-blue-300'
+                    : cn(
+                        'border-slate-100 hover:bg-blue-50/30',
+                        isEven ? 'bg-white' : 'bg-slate-50/50'
+                      )
+                )}
+                onClick={() => row.kind === 'edge' ? onSelectEdge(row.id) : onSelectNode(row.id)}
+              >
+                {cols.map(col => (
+                  <RowCells
+                    key={col} col={col} row={row} idx={idx} unit={unit} globalUnit={unit}
+                    changeEdge={changeEdge} changeNode={changeNode}
+                    hSchedules={hSchedules}
+                    qSchedules={qSchedules}
+                    vSchedules={vSchedules}
+                    onOpenPairsEditor={onOpenPairsEditor}
+                    onSetUnit={onSetUnit}
+                    isHighlighted={isHighlighted}
+                    onHighlightRow={() => setHighlightedRowId(isHighlighted ? null : row.id)}
+                    pcharData={pcharData}
+                  />
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── FlexTable (exported) ─────────────────────────────────────────────────────
+export function FlexTable({ open, onClose }: FlexTableProps) {
+  const {
+    nodes, edges, globalUnit, setGlobalUnit, setElementUnit,
+    updateEdgeData, updateNodeData, selectElement,
+    hSchedules, updateHSchedule, addHSchedule,
+    pcharData,
+    qSchedules, updateQSchedule,
+    vSchedules, updateVSchedule, addVSchedule,
+    applyMaterialToAllConduits, setApplyMaterialToAllConduits,
+  } = useNetworkStore();
+  const { toast } = useToast();
+  const [activeFilter, setActiveFilter] = useState<FilterKey>('all');
+  const [pairsEditor, setPairsEditor] = useState<PairsEditorState | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportSheetSummary[] | null>(null);
+  const [showImportSummary, setShowImportSummary] = useState(false);
+  const importFileRef = useRef<HTMLInputElement>(null);
+
+  const allRows = useMemo<UnifiedRow[]>(() => {
+    const nodeRows = new Map(nodes.map(n => [n.id, {
+      id: n.id, kind: 'node' as const,
+      subType: (n.data?.type as string) || (n.type as string) || 'node',
+      data: (n.data || {}) as Record<string, any>,
+    }]));
+    const edgeRows = new Map(edges.map(e => [e.id, {
+      id: e.id, kind: 'edge' as const,
+      subType: (e.data?.type as string) || 'conduit',
+      data: (e.data || {}) as Record<string, any>,
+    }]));
+
+    const visited = new Set<string>();
+    const result: UnifiedRow[] = [];
+
+    const pushNode = (r: UnifiedRow) => { if (!visited.has(r.id)) { visited.add(r.id); result.push(r); } };
+    const pushEdge = (r: UnifiedRow) => { if (!visited.has(r.id)) { visited.add(r.id); result.push(r); } };
+
+    const reservoirs = [...nodeRows.values()].filter(r => r.subType === 'reservoir');
+    for (const res of reservoirs) {
+      pushNode(res);
+      for (const e of edges.filter(e => e.source === res.id)) {
+        const er = edgeRows.get(e.id); if (er) pushEdge(er);
+        const tr = nodeRows.get(e.target); if (tr) pushNode(tr);
+      }
+    }
+    for (const e of edgeRows.values()) if (!visited.has(e.id)) { visited.add(e.id); result.push(e); }
+    for (const n of nodeRows.values()) if (!visited.has(n.id)) { visited.add(n.id); result.push(n); }
+
+    return result;
+  }, [nodes, edges]);
+
+  const filteredRows = useMemo(() => allRows.filter(r => matchesFilter(r, activeFilter)), [allRows, activeFilter]);
+
+  const counts = useMemo(() => ({
+    all:          allRows.length,
+    conduit:      allRows.filter(r => r.subType === 'conduit').length,
+    dummy:        allRows.filter(r => r.subType === 'dummy').length,
+    node:         allRows.filter(r => r.kind === 'node').length,
+    reservoir:    allRows.filter(r => r.subType === 'reservoir').length,
+    junction:     allRows.filter(r => r.subType === 'junction').length,
+    surgeTank:    allRows.filter(r => r.subType === 'surgeTank').length,
+    flowBoundary: allRows.filter(r => r.subType === 'flowBoundary').length,
+    pump:         allRows.filter(r => r.subType === 'pump').length,
+    checkValve:   allRows.filter(r => r.subType === 'checkValve').length,
+    turbine:      allRows.filter(r => r.subType === 'turbine').length,
+  }), [allRows]);
+
+  const handleChangeEdge = useCallback((id: string, field: string, rawStr: string, currentData: any) => {
+    const textFields = new Set(['label', 'comment', 'type']);
+    const isText = textFields.has(field);
+    let val: any;
+    if (field === 'hasAddedLoss' || field === 'variable' || field === 'includeNumSegments') {
+      val = rawStr === 'true';
+    } else if (isText) {
+      val = rawStr;
+    } else {
+      val = rawStr.trim() === '' ? rawStr : (parseFloat(rawStr) || 0);
+    }
+    const update: any = { [field]: val };
+    if (typeof val === 'number' && CACHEABLE_FIELDS.has(field)) {
+      const cache = (currentData?._unitCache as any) || {};
+      const cu = (currentData?.unit as UnitSystem) || globalUnit;
+      update._unitCache = buildCacheUpdate(cache, cu, field, val);
+    }
+    // When Manning's n is edited, recompute friction to keep both in sync
+    if (field === 'manningsN') {
+      const n = parseFloat(rawStr) || 0;
+      const diam = parseFloat(currentData?.diameter) || 0;
+      const elemUnit: UnitSystem = (currentData?.unit as UnitSystem) || globalUnit;
+      const K = elemUnit === 'SI' ? 124.58 : 185;
+      if (n > 0 && diam > 0) {
+        update.friction = parseFloat(((K * n * n) / Math.pow(diam, 1 / 3)).toFixed(6));
+      }
+    }
+    // When E, WT, or diameter is edited, recompute wave speed (celerity) if all three are present
+    if (field === 'pipeE' || field === 'pipeWT' || field === 'diameter') {
+      const elemUnit: UnitSystem = (currentData?.unit as UnitSystem) || globalUnit;
+      const C0 = elemUnit === 'SI' ? 1440 : 4720;
+      const Kw = elemUnit === 'SI' ? 2.07e9 : 3e5;
+      const E  = field === 'pipeE'     ? (parseFloat(rawStr) || 0) : (parseFloat(currentData?.pipeE)  || 0);
+      const WT = field === 'pipeWT'    ? (parseFloat(rawStr) || 0) : (parseFloat(currentData?.pipeWT) || 0);
+      const D  = field === 'diameter'  ? (parseFloat(rawStr) || 0) : (parseFloat(currentData?.diameter) || 0);
+      if (E > 0 && WT > 0 && D > 0) {
+        update.celerity = parseFloat((C0 / Math.sqrt(1 + (Kw / E) * (D / WT))).toFixed(4));
+      }
+    }
+    updateEdgeData(id, update);
+  }, [globalUnit, updateEdgeData]);
+
+  const handleChangeNode = useCallback((id: string, field: string, rawStr: string, currentData: any) => {
+    const textFields = new Set(['label', 'comment', 'mode', 'type', 'type_st', 'pumpStatus', 'valveStatus']);
+    const boolFields = new Set(['hasAddedLoss', 'hasShape']);
+    const isText = textFields.has(field);
+    const isBool = boolFields.has(field);
+    let val: any;
+    if (isBool) {
+      val = rawStr === 'true';
+    } else if (isText) {
+      val = rawStr;
+    } else {
+      val = rawStr.trim() === '' ? rawStr : (parseFloat(rawStr) || 0);
+    }
+    const update: any = { [field]: val };
+    if (typeof val === 'number' && CACHEABLE_FIELDS.has(field)) {
+      const cache = (currentData?._unitCache as any) || {};
+      const cu = (currentData?.unit as UnitSystem) || globalUnit;
+      update._unitCache = buildCacheUpdate(cache, cu, field, val);
+    }
+    updateNodeData(id, update);
+  }, [globalUnit, updateNodeData]);
+
+  const handleSelectEdge = useCallback((id: string) => selectElement(id, 'edge'), [selectElement]);
+  const handleSelectNode = useCallback((id: string) => selectElement(id, 'node'), [selectElement]);
+
+  const handleOpenPairsEditor = useCallback((
+    rowId: string,
+    rowKind: 'node' | 'edge',
+    pairsType: 'qSchedule' | 'hSchedule' | 'shapePairs' | 'vSchedule',
+    scheduleNumber?: number
+  ) => {
+    setPairsEditor({ open: true, rowId, rowKind, pairsType, scheduleNumber });
+  }, []);
+
+  // Build the initial pairs for the editor based on editor state
+  const editorInitialPairs = useMemo((): PairRow[] => {
+    if (!pairsEditor) return [];
+    if (pairsEditor.pairsType === 'qSchedule') {
+      const row = allRows.find(r => r.id === pairsEditor.rowId);
+      const schedNum = Number(row?.data?.scheduleNumber || 1);
+      const pts = (qSchedules[schedNum] as any[]) || (row?.data?.schedulePoints as any[]) || [];
+      return pts.map((p: any) => ({ time: String(p.time ?? 0), value: String(p.flow ?? 0) }));
+    } else if (pairsEditor.pairsType === 'shapePairs') {
+      const row = allRows.find(r => r.id === pairsEditor.rowId);
+      const pts = (row?.data?.shape as any[]) || [];
+      return pts.map((p: any) => ({ time: String(p.e ?? 0), value: String(p.a ?? 0) }));
+    } else if (pairsEditor.pairsType === 'vSchedule') {
+      const schedNum = pairsEditor.scheduleNumber || 1;
+      const pts: { t: number; g: number }[] = vSchedules[schedNum] || [];
+      return pts.map(p => ({ time: String(p.t ?? 0), value: String(p.g ?? 0) }));
+    } else {
+      const schedNum = pairsEditor.scheduleNumber || 1;
+      const sched = hSchedules?.find((s: any) => s.number === schedNum);
+      const pts = sched?.points || [];
+      return pts.map((p: any) => ({ time: String(p.time ?? 0), value: String(p.head ?? 0) }));
+    }
+  }, [pairsEditor, allRows, hSchedules, qSchedules, vSchedules]);
+
+  const handleSavePairs = useCallback((rows: PairRow[]) => {
+    if (!pairsEditor) return;
+    if (pairsEditor.pairsType === 'qSchedule') {
+      const row = allRows.find(r => r.id === pairsEditor.rowId);
+      const schedNum = Number(row?.data?.scheduleNumber || 1);
+      const schedulePoints = rows.map(r => ({
+        time: parseFloat(r.time) || 0,
+        flow: parseFloat(r.value) || 0,
+      }));
+      updateQSchedule(schedNum, schedulePoints);
+    } else if (pairsEditor.pairsType === 'shapePairs') {
+      const shape = rows.map(r => ({
+        e: parseFloat(r.time) || 0,
+        a: parseFloat(r.value) || 0,
+      }));
+      updateNodeData(pairsEditor.rowId, { shape });
+    } else if (pairsEditor.pairsType === 'vSchedule') {
+      const schedNum = pairsEditor.scheduleNumber || 1;
+      const points = rows.map(r => ({
+        t: parseFloat(r.time) || 0,
+        g: parseFloat(r.value) || 0,
+      }));
+      addVSchedule(schedNum);
+      updateVSchedule(schedNum, points);
+    } else {
+      const schedNum = pairsEditor.scheduleNumber || 1;
+      const points = rows.map(r => ({
+        time: parseFloat(r.time) || 0,
+        head: parseFloat(r.value) || 0,
+      }));
+      addHSchedule(schedNum);
+      updateHSchedule(schedNum, points);
+    }
+  }, [pairsEditor, allRows, updateNodeData, updateQSchedule, updateHSchedule, addHSchedule, updateVSchedule, addVSchedule]);
+
+  const visibleChips = FILTER_CHIPS.filter(c => counts[c.key as keyof typeof counts] > 0 || c.key === 'all');
+
+  const tabLabel = FILTER_CHIPS.find(c => c.key === activeFilter)?.label ?? activeFilter;
+
+  const handleExport = useCallback(async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      if (activeFilter === 'all') {
+        // Multi-sheet workbook: one sheet per element type
+        const exportRows: ExportRow[] = allRows.map(r => ({
+          id: r.id, kind: r.kind, subType: r.subType, data: r.data,
+        }));
+        const { projectName } = useNetworkStore.getState();
+        await exportAllSheetsToExcel(exportRows, globalUnit, projectName, hSchedules ?? [], qSchedules ?? {});
+        toast({ title: 'Export complete', description: 'All element types exported as a multi-sheet workbook.' });
+      } else {
+        const excelFilter = activeFilter as ExcelFilterKey;
+        if (!TAB_COLS[excelFilter]) {
+          toast({ title: 'Export not available', description: 'No column definition for this filter.', variant: 'destructive' });
+          return;
+        }
+        const rowsToExport = excelFilter === 'node'
+          ? filteredRows.filter(r => r.subType === 'node')
+          : filteredRows;
+        const exportRows: ExportRow[] = rowsToExport.map(r => ({
+          id: r.id, kind: r.kind, subType: r.subType, data: r.data,
+        }));
+        await exportTabToExcel(excelFilter, exportRows, globalUnit, tabLabel, hSchedules ?? [], qSchedules ?? {});
+        toast({ title: 'Export complete', description: `${tabLabel} tab exported as Excel.` });
+      }
+    } catch (err: any) {
+      toast({ title: 'Export failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsExporting(false);
+    }
+  }, [activeFilter, allRows, filteredRows, globalUnit, tabLabel, isExporting, hSchedules, toast]);
+
+
+  const handleImport = useCallback(async (file: File) => {
+    if (isImporting) return;
+    setIsImporting(true);
+    try {
+      if (activeFilter === 'all') {
+        // Multi-sheet import
+        const allExportRows: ExportRow[] = allRows.map(r => ({
+          id: r.id, kind: r.kind, subType: r.subType, data: r.data,
+        }));
+        const { updates, hScheduleUpdates, qScheduleUpdates, summary, totalMatched, totalSkipped } =
+          await importAllSheetsFromExcel(allExportRows, globalUnit, file);
+        updates.forEach(upd => {
+          if (upd.kind === 'edge') updateEdgeData(upd.id, upd.data);
+          else updateNodeData(upd.id, upd.data);
+        });
+        hScheduleUpdates.forEach(upd => {
+          addHSchedule(upd.scheduleNumber);
+          updateHSchedule(upd.scheduleNumber, upd.points);
+        });
+        (qScheduleUpdates as QScheduleUpdate[]).forEach(upd => {
+          updateQSchedule(upd.scheduleNumber, upd.points);
+        });
+        if (summary.length > 0) {
+          setImportSummary(summary);
+          setShowImportSummary(true);
+        } else {
+          toast({ title: 'Import complete', description: `${totalMatched} rows updated, ${totalSkipped} skipped across all sheets.` });
+        }
+      } else {
+        const excelFilter = activeFilter as ExcelFilterKey;
+        if (!TAB_COLS[excelFilter]) {
+          toast({ title: 'Import not available', description: 'No column definition for this filter.', variant: 'destructive' });
+          return;
+        }
+        const rowsToImport = excelFilter === 'node'
+          ? filteredRows.filter(r => r.subType === 'node')
+          : filteredRows;
+        const exportRows: ExportRow[] = rowsToImport.map(r => ({
+          id: r.id, kind: r.kind, subType: r.subType, data: r.data,
+        }));
+        const { updates, hScheduleUpdates, qScheduleUpdates, skipped, matched } = await importTabFromExcel(
+          excelFilter, exportRows, globalUnit, file
+        );
+        updates.forEach(upd => {
+          if (upd.kind === 'edge') updateEdgeData(upd.id, upd.data);
+          else updateNodeData(upd.id, upd.data);
+        });
+        hScheduleUpdates.forEach(upd => {
+          addHSchedule(upd.scheduleNumber);
+          updateHSchedule(upd.scheduleNumber, upd.points);
+        });
+        (qScheduleUpdates as QScheduleUpdate[]).forEach(upd => {
+          updateQSchedule(upd.scheduleNumber, upd.points);
+        });
+        toast({ title: 'Import complete', description: `${matched} row${matched !== 1 ? 's' : ''} updated, ${skipped} skipped.` });
+      }
+    } catch (err: any) {
+      toast({ title: 'Import failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsImporting(false);
+      if (importFileRef.current) importFileRef.current.value = '';
+    }
+  }, [isImporting, activeFilter, allRows, filteredRows, globalUnit, updateEdgeData, updateNodeData, addHSchedule, updateHSchedule, toast]);
+
+  // Build editor title/labels — use element's own unit if set
+  const editorRow = pairsEditor ? allRows.find(r => r.id === pairsEditor.rowId) : null;
+  const editorUnit: UnitSystem = (editorRow?.data?.unit as UnitSystem) || globalUnit;
+  const editorTitle = pairsEditor?.pairsType === 'qSchedule'
+    ? 'Edit Q Schedule Points'
+    : pairsEditor?.pairsType === 'shapePairs'
+    ? 'Edit Shape (E, A) Pairs'
+    : pairsEditor?.pairsType === 'vSchedule'
+    ? `Edit VSCHEDULE ${pairsEditor.scheduleNumber ?? 1} — Gate Time Pairs`
+    : 'Edit T/H Pairs';
+  const editorTimeLabel = pairsEditor?.pairsType === 'shapePairs'
+    ? `E (${editorUnit === 'FPS' ? 'ft' : 'm'})`
+    : pairsEditor?.pairsType === 'vSchedule'
+    ? 'Time (T)'
+    : 'Time (T)';
+  const editorValueLabel = pairsEditor?.pairsType === 'qSchedule'
+    ? `Flow (Q) (${editorUnit === 'FPS' ? 'ft³/s' : 'm³/s'})`
+    : pairsEditor?.pairsType === 'shapePairs'
+    ? `A (${editorUnit === 'FPS' ? 'ft²' : 'm²'})`
+    : pairsEditor?.pairsType === 'vSchedule'
+    ? 'Gate Opening (G %)'
+    : `Head (H) (${editorUnit === 'FPS' ? 'ft' : 'm'})`;
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={v => !v && onClose()}>
+        <DialogContent
+          className="!fixed !left-0 !top-0 !translate-x-0 !translate-y-0 !max-w-none !w-screen !h-screen !rounded-none flex flex-col !p-0 !gap-0 overflow-hidden !border-0"
+          data-testid="flextable-dialog"
+          hideCloseButton
+        >
+          {/* ── Header ── */}
+          <DialogHeader className="px-5 py-2.5 border-b bg-white flex-none shadow-sm">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <DialogTitle className="text-base font-bold text-black" style={{ fontFamily: 'Poppins, sans-serif' }}>Flex Table</DialogTitle>
+                <span className="text-xs text-black">
+                  {nodes.length} node{nodes.length !== 1 ? 's' : ''} · {edges.length} pipe{edges.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 text-xs">
+                  <button
+                    data-testid="flextable-unit-si"
+                    className={cn('px-3 py-1 rounded-full font-semibold transition-colors', globalUnit === 'SI' ? 'bg-[#1a73e8] text-white' : 'bg-slate-100 text-black hover:bg-slate-200')}
+                    onClick={() => setGlobalUnit('SI')}
+                  >SI</button>
+                  <button
+                    data-testid="flextable-unit-fps"
+                    className={cn('px-3 py-1 rounded-full font-semibold transition-colors', globalUnit === 'FPS' ? 'bg-[#1a73e8] text-white' : 'bg-slate-100 text-black hover:bg-slate-200')}
+                    onClick={() => setGlobalUnit('FPS')}
+                  >FPS</button>
+                </div>
+                <div className="flex items-center gap-1.5 px-2 h-7 rounded border border-slate-200 bg-slate-50">
+                  <Checkbox
+                    id="flextable-apply-mat-all"
+                    data-testid="checkbox-flextable-apply-material-all"
+                    checked={applyMaterialToAllConduits}
+                    onCheckedChange={(c) => {
+                      const checked = !!c;
+                      setApplyMaterialToAllConduits(checked);
+                      if (!checked) return;
+                      // Find a "source" material: prefer the currently-selected conduit,
+                      // otherwise use the first conduit in the network that has a material.
+                      const conduits = edges.filter(e => e.data?.type === 'conduit');
+                      const sel = conduits.find(e => e.id === useNetworkStore.getState().selectedElementId);
+                      const source =
+                        (sel && (sel.data as any)?.materialId)
+                          ? sel
+                          : conduits.find(e => (e.data as any)?.materialId);
+                      if (!source) return;
+                      const matIdStr = String((source.data as any).materialId);
+                      const id = parseInt(matIdStr, 10);
+                      const m = PIPE_MATERIALS_BY_ID[id];
+                      if (!m) return;
+                      const n = m.manningsN;
+                      let count = 0;
+                      conduits.forEach(e => {
+                        const eUnit: UnitSystem = ((e.data as any)?.unit as UnitSystem) || globalUnit;
+                        const eEval = eUnit === 'SI' ? m.youngsModulus_Pa : m.youngsModulus_psi;
+                        const upd: any = { materialId: matIdStr, manningsN: n };
+                        if (eEval > 0) upd.pipeE = eEval;
+                        const eD = parseFloat(String((e.data as any)?.diameter)) || 0;
+                        if (eD > 0 && n > 0) {
+                          const K = eUnit === 'SI' ? 124.58 : 185;
+                          upd.friction = parseFloat(((K * n * n) / Math.pow(eD, 1 / 3)).toFixed(6));
+                        }
+                        const eWT = parseFloat(String((e.data as any)?.pipeWT)) || 0;
+                        if (eEval > 0 && eWT > 0 && eD > 0) {
+                          const C0 = eUnit === 'SI' ? 1440 : 4720;
+                          const Kw = eUnit === 'SI' ? 2.07e9 : 3e5;
+                          upd.celerity = parseFloat((C0 / Math.sqrt(1 + (Kw / eEval) * (eD / eWT))).toFixed(4));
+                        }
+                        updateEdgeData(e.id, upd);
+                        count++;
+                      });
+                      if (count > 0) {
+                        toast({
+                          title: 'Material applied to all conduits',
+                          description: `${m.label} applied to ${count} conduit${count > 1 ? 's' : ''}.`,
+                        });
+                      }
+                    }}
+                    className="h-3.5 w-3.5"
+                  />
+                  <Label
+                    htmlFor="flextable-apply-mat-all"
+                    className="text-[11px] font-normal cursor-pointer text-slate-700"
+                    title="When checked, picking a Pipe Material applies it to all conduits in the network"
+                  >
+                    Apply material to <strong>all conduits</strong>
+                  </Label>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full" onClick={onClose} data-testid="flextable-close">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* ── Filter chips ── */}
+          <div className="flex items-center gap-1.5 px-5 py-2 border-b bg-white flex-none flex-wrap">
+            {visibleChips.map(chip => {
+              const active = activeFilter === chip.key;
+              return (
+                <button
+                  key={chip.key}
+                  data-testid={`filter-chip-${chip.key}`}
+                  onClick={() => setActiveFilter(chip.key)}
+                  className={cn(
+                    'inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-medium transition-all',
+                    active ? 'bg-[#1a73e8] text-white border-[#1a73e8]' : 'bg-white text-black border-slate-200 hover:border-slate-400'
+                  )}
+                >
+                  {chip.label}
+                  <span className={cn(
+                    'inline-flex items-center justify-center rounded-full text-[9px] font-bold min-w-[16px] h-4 px-1',
+                    active ? 'bg-white/25 text-white' : 'bg-slate-100 text-black'
+                  )}>
+                    {counts[chip.key as keyof typeof counts]}
+                  </span>
+                </button>
+              );
+            })}
+            {activeFilter !== 'all' && (
+              <button className="text-[11px] text-black ml-1 hover:text-slate-600 underline" onClick={() => setActiveFilter('all')}>
+                Clear
+              </button>
+            )}
+            <div className="ml-auto flex items-center gap-1.5">
+              {TAB_COLS[activeFilter as ExcelFilterKey] && (
+                <>
+                  <button
+                    data-testid="flextable-export-btn"
+                    disabled={isExporting || filteredRows.length === 0}
+                    onClick={handleExport}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1 rounded border text-[11px] font-semibold transition-colors',
+                      isExporting || filteredRows.length === 0
+                        ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
+                        : 'border-[#1a73e8] text-[#1a73e8] bg-white hover:bg-blue-50'
+                    )}
+                    title={`Export ${tabLabel} tab to Excel`}
+                  >
+                    <Download className="h-3 w-3" />
+                    {isExporting ? 'Exporting…' : 'Export Excel'}
+                  </button>
+                  <button
+                    data-testid="flextable-import-btn"
+                    disabled={isImporting}
+                    onClick={() => importFileRef.current?.click()}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1 rounded border text-[11px] font-semibold transition-colors',
+                      isImporting
+                        ? 'border-slate-200 text-slate-300 bg-slate-50 cursor-not-allowed'
+                        : 'border-emerald-600 text-emerald-700 bg-white hover:bg-emerald-50'
+                    )}
+                    title={`Import ${tabLabel} tab from Excel`}
+                  >
+                    <Upload className="h-3 w-3" />
+                    {isImporting ? 'Importing…' : 'Import Excel'}
+                  </button>
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".xlsx"
+                    className="hidden"
+                    data-testid="flextable-import-file"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleImport(file);
+                    }}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── Table ── */}
+          <div className="flex-1 overflow-hidden flex flex-col px-4 py-3 gap-2 bg-white">
+            <UnifiedTable
+              rows={filteredRows} filter={activeFilter} unit={globalUnit} hSchedules={hSchedules ?? []}
+              qSchedules={qSchedules ?? {}}
+              vSchedules={vSchedules ?? {}}
+              pcharData={pcharData ?? {}}
+              onChangeEdge={handleChangeEdge} onChangeNode={handleChangeNode}
+              onSelectEdge={handleSelectEdge} onSelectNode={handleSelectNode}
+              onOpenPairsEditor={handleOpenPairsEditor}
+              onSetUnit={setElementUnit}
+            />
+            <p className="text-[10px] text-black flex-none">
+              Showing {filteredRows.length} of {allRows.length} elements ·
+              Click any white cell to edit · Dimmed cells are read-only for that element type ·
+              Turbine V Schedule (T/G pairs) editable inline when mode is TURBGOV or EMERGENCY ·
+              SI/FPS toggle applies globally · Per-row Unit column overrides individual elements · Amber border indicates per-element override
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pairs editor — rendered outside the main Dialog to avoid stacking issues */}
+      {pairsEditor && (
+        <PairsEditorModal
+          open={pairsEditor.open}
+          onClose={() => setPairsEditor(null)}
+          title={editorTitle}
+          timeLabel={editorTimeLabel}
+          valueLabel={editorValueLabel}
+          initialPairs={editorInitialPairs}
+          onSave={handleSavePairs}
+        />
+      )}
+
+      {/* ── Import Summary Dialog ── */}
+      {showImportSummary && importSummary && (
+        <Dialog open={showImportSummary} onOpenChange={v => !v && setShowImportSummary(false)}>
+          <DialogContent
+            className="max-w-md rounded-xl shadow-2xl"
+            data-testid="import-summary-dialog"
+          >
+            <DialogHeader>
+              <DialogTitle
+                className="text-base font-bold text-black flex items-center gap-2"
+                style={{ fontFamily: 'Poppins, sans-serif' }}
+              >
+                <Check className="w-4 h-4 text-emerald-600" />
+                Import Complete
+              </DialogTitle>
+            </DialogHeader>
+            <div className="mt-2 space-y-1">
+              <p className="text-[12px] text-slate-500 mb-3" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                Multi-sheet import results:
+              </p>
+              <div className="rounded-lg border border-slate-200 overflow-hidden">
+                <table className="w-full text-[12px]" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="text-left px-3 py-2 font-semibold text-slate-700">Sheet</th>
+                      <th className="text-right px-3 py-2 font-semibold text-emerald-700">Updated</th>
+                      <th className="text-right px-3 py-2 font-semibold text-amber-600">Skipped</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importSummary.map((row, i) => (
+                      <tr key={row.label} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                        <td className="px-3 py-1.5 font-medium text-black">{row.label}</td>
+                        <td className="px-3 py-1.5 text-right text-emerald-700 font-semibold">{row.matched}</td>
+                        <td className="px-3 py-1.5 text-right text-amber-600 font-semibold">{row.skipped}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-100 border-t border-slate-200 font-bold">
+                      <td className="px-3 py-2 text-black">Total</td>
+                      <td className="px-3 py-2 text-right text-emerald-700">
+                        {importSummary.reduce((s, r) => s + r.matched, 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-amber-600">
+                        {importSummary.reduce((s, r) => s + r.skipped, 0)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2 leading-snug" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                Skipped rows had no matching element label in the current network.
+              </p>
+            </div>
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setShowImportSummary(false)}
+                className="px-4 py-1.5 rounded-full bg-[#1a73e8] text-white text-[12px] font-semibold hover:bg-[#1557b0] transition-colors"
+                style={{ fontFamily: 'Poppins, sans-serif' }}
+                data-testid="import-summary-close"
+              >
+                Done
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
+  );
+}

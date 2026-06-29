@@ -1,0 +1,62 @@
+You are generating a .inp file for a hydraulic network system. Follow these PRECISE rules to determine which nodes to include in the NODE section:
+
+STEP-BY-STEP ALGORITHM:
+
+1. First, identify all nodes that have special elements AT them:
+   - JUNCTION AT X
+   - RESERVOIR AT X
+   - FLOWBC AT X (like FB1, FB2)
+   - Any "ELEM [name] AT [node]" statements
+   → These nodes are ALWAYS INCLUDED
+
+2. For each element connection "ELEM [id] LINK [from] [to]":
+   
+   a) If the element ID appears multiple times consecutively (multi-link chain):
+      - INCLUDE the first "from" node (start of chain)
+      - SKIP all intermediate "to" nodes
+      - INCLUDE the final "to" node (end of chain)
+      
+      Example: 
+      ELEM C3 LINK 3 4  ← Include node 3
+      ELEM C3 LINK 4 5  ← Skip node 4
+      ELEM C3 LINK 5 6  ← Skip node 5
+      ELEM C3 LINK 6 7  ← Skip node 6
+      ELEM C3 LINK 7 8  ← Include node 8
+   
+   b) If the element ID appears only once (single-link):
+      - INCLUDE the "from" node if:
+        * It's the first node in the system, OR
+        * The previous element had a different ID, OR
+        * It has a special element AT it, OR
+        * It's immediately after a node with a special element AT it
+      
+      - SKIP the "to" node if:
+        * The next element is also a single-link with different ID
+        * AND the "to" node has NO special element AT it
+        * AND it's NOT immediately after a node with special element AT it
+
+CONCRETE EXAMPLE from the system:
+
+ELEM HW AT 1              → Include node 1 (special element)
+ELEM C1 LINK 1 2          → Include node 2 (C1 to C2 transition)
+ELEM C2 LINK 2 3          → Include node 3 (C2 to C3 transition)
+ELEM C3 LINK 3 4          → Skip node 4 (C3 chain continues)
+ELEM C3 LINK 4 5          → Skip node 5 (C3 chain continues)
+ELEM C3 LINK 5 6          → Skip node 6 (C3 chain continues)
+ELEM C3 LINK 6 7          → Skip node 7 (C3 chain continues)
+ELEM C3 LINK 7 8          → Include node 8 (has JUNCTION AT 8)
+JUNCTION AT 8
+ELEM C4 LINK 8 9          → Include node 9 (after JUNCTION, C4 to C5 transition)
+ELEM C5 LINK 9 10         → Include node 10 (C5 to C6 transition)
+ELEM C6 LINK 10 11        → Include node 11 (C6 to C7 transition)
+ELEM C7 LINK 11 12        → Include node 12 (C7 to C8 transition)
+ELEM C8 LINK 12 13        → Skip node 13 (C8 to C9, simple series)
+ELEM C9 LINK 13 14        → Include node 14 (has ELEM FB1 AT 14)
+
+OUTPUT FORMAT:
+- Use 4 spaces for indentation
+- Format: "    NODE [number] ELEV [elevation]"
+- Show one decimal place minimum (e.g., 912.0 not 912)
+- List nodes in ascending numerical order
+
+Apply this logic to generate the NODE section of the .inp file.

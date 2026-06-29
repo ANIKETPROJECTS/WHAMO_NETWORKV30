@@ -1,0 +1,242 @@
+================================================================================
+COMPREHENSIVE PROMPT FOR .INP FILE NODE GENERATION
+================================================================================
+
+You are generating the NODE section of a .inp file for a hydraulic network system.
+The NODE section must only include specific nodes based on the following rules.
+
+================================================================================
+CRITICAL RULES FOR NODE INCLUSION/EXCLUSION
+================================================================================
+
+RULE 1: ALWAYS INCLUDE - Nodes with Special Elements
+------------------------------------------------------
+Include ANY node that has a special element defined AT it, such as:
+  - ELEM HW AT [node]          (headwater/reservoir)
+  - JUNCTION AT [node]         (junction point)
+  - ELEM FB1 AT [node]         (flow boundary condition)
+  - ELEM FB2 AT [node]         (flow boundary condition)
+  - Any "ELEM [name] AT [node]" statement
+
+Example:
+  ELEM HW AT 1       → Node 1 MUST be included
+  JUNCTION AT 8      → Node 8 MUST be included
+  ELEM FB1 AT 14     → Node 14 MUST be included
+
+================================================================================
+
+RULE 2: ALWAYS SKIP - Intermediate Nodes in Multi-Link Chains
+--------------------------------------------------------------
+Skip ANY node where the SAME element ID appears in both incoming and outgoing connections.
+This indicates the node is an intermediate point in a continuous chain.
+
+Example:
+  ELEM C3 LINK 3 4
+  ELEM C3 LINK 4 5   → Skip node 4 (C3 in, C3 out)
+  ELEM C3 LINK 5 6   → Skip node 5 (C3 in, C3 out)
+  ELEM C3 LINK 6 7   → Skip node 6 (C3 in, C3 out)
+  ELEM C3 LINK 7 8   → Skip node 7 (C3 in, C3 out)
+
+All of nodes 4, 5, 6, 7 are SKIPPED because they are intermediate in the C3 chain.
+
+================================================================================
+
+RULE 3: SELECTIVE INCLUSION - Transition Nodes (Different In/Out Elements)
+---------------------------------------------------------------------------
+For nodes where the incoming element ID is DIFFERENT from the outgoing element ID,
+apply the following sub-rules:
+
+RULE 3A: INCLUDE - Most Element Transitions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Generally, INCLUDE nodes where the element type changes, such as:
+  - C1 → C2 transitions
+  - C2 → C3 transitions
+  - C5 → C6 transitions
+  - C6 → C7 transitions
+  - C7 → C8 transitions
+
+Example:
+  ELEM C1 LINK 1 2
+  ELEM C2 LINK 2 3   → Include node 2 (C1→C2 transition)
+  ELEM C3 LINK 3 4   → Include node 3 (C2→C3 transition)
+
+RULE 3B: SKIP - Specific Transition Patterns
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+SKIP nodes in the following specific cases:
+
+Case 1: C8 → C9 Transitions (Before Terminal Elements)
+  When C8 transitions to C9, and C9 leads to a terminal node (with FB/special element),
+  SKIP the transition node.
+  
+  Example:
+    ELEM C8 LINK 12 13
+    ELEM C9 LINK 13 14
+    ELEM FB1 AT 14
+    → Skip node 13 (C8→C9 transition before terminal)
+
+Case 2: First Node in Secondary/Parallel Branches
+  When multiple branches emerge from a JUNCTION, only the FIRST branch's first node
+  is included. Subsequent parallel branches have their first transition node SKIPPED.
+  
+  Example from a junction at node 8:
+    First branch:
+      ELEM C4 LINK 8 9   → Include node 9 (first branch)
+      
+    Second branch (parallel):
+      ELEM C4 LINK 8 15  → Skip node 15 (parallel branch, same pattern as first)
+
+  Why node 9 is included but node 15 is skipped:
+  - Both are C4→C5 transitions
+  - Node 9 appears FIRST in the file sequence (primary branch)
+  - Node 15 appears later (duplicate/parallel branch with identical pattern)
+
+================================================================================
+
+STEP-BY-STEP ALGORITHM
+================================================================================
+
+Step 1: Parse the SYSTEM Section
+---------------------------------
+Read all element definitions and identify:
+  a) Nodes with special elements AT them
+  b) All LINK connections (element_id, from_node, to_node)
+
+Step 2: Create Node Classification Maps
+----------------------------------------
+For each node, determine:
+  - incoming_elements: list of element IDs that END at this node
+  - outgoing_elements: list of element IDs that START from this node
+  - has_special_element: boolean (true if ELEM [x] AT [node] exists)
+
+Step 3: Apply Inclusion Rules
+------------------------------
+For each node in the system:
+
+  IF has_special_element == true:
+    → INCLUDE the node
+    
+  ELSE IF incoming_elements[0] == outgoing_elements[0]:
+    → SKIP the node (intermediate in chain)
+    
+  ELSE IF incoming_elements[0] != outgoing_elements[0]:
+    → Check specific patterns:
+    
+    IF (incoming == C8 AND outgoing == C9):
+      → SKIP the node
+      
+    ELSE IF (node is first node after a JUNCTION):
+      IF (this is the FIRST occurrence of this branch pattern):
+        → INCLUDE the node
+      ELSE:
+        → SKIP the node (duplicate parallel branch)
+        
+    ELSE:
+      → INCLUDE the node (standard element transition)
+
+Step 4: Generate NODE Section
+------------------------------
+For each included node, output in this format:
+    NODE [number] ELEV [elevation]
+
+Formatting requirements:
+  - Use 4 spaces for indentation
+  - Node numbers in ascending order
+  - Elevation with at least 1 decimal place (e.g., 912.0 not 912)
+
+================================================================================
+
+CONCRETE EXAMPLE FROM REFERENCE FILES
+================================================================================
+
+Input SYSTEM section:
+--------------------
+SYSTEM
+    ELEM HW AT 1
+    ELEM C1 LINK 1 2
+    ELEM C2 LINK 2 3
+    ELEM C3 LINK 3 4
+    ELEM C3 LINK 4 5
+    ELEM C3 LINK 5 6
+    ELEM C3 LINK 6 7
+    ELEM C3 LINK 7 8
+    JUNCTION AT 8
+    ELEM C4 LINK 8 9
+    ELEM C5 LINK 9 10
+    ELEM C6 LINK 10 11
+    ELEM C7 LINK 11 12
+    ELEM C8 LINK 12 13
+    ELEM C9 LINK 13 14
+    ELEM C4 LINK 8 15
+    ELEM C5 LINK 15 16
+    ELEM C6 LINK 16 17
+    ELEM C7 LINK 17 18
+    ELEM C8 LINK 18 19
+    ELEM C9 LINK 19 20
+    ELEM FB1 AT 14
+    ELEM FB2 AT 20
+FINISH
+
+Expected NODE section output:
+----------------------------
+    NODE 1 ELEV 1354.6    ← Special element (HW AT 1)
+    NODE 2 ELEV 1354.6    ← Transition (C1→C2)
+    NODE 3 ELEV 1355.0    ← Transition (C2→C3)
+    NODE 8 ELEV 1298.6    ← Special element (JUNCTION AT 8)
+    NODE 9 ELEV 1298.6    ← Transition (C4→C5, first branch)
+    NODE 10 ELEV 1298.6   ← Transition (C5→C6)
+    NODE 11 ELEV 1213.6   ← Transition (C6→C7)
+    NODE 12 ELEV 912.0    ← Transition (C7→C8)
+    NODE 14 ELEV 908.2    ← Special element (FB1 AT 14)
+    NODE 16 ELEV 1298.6   ← Transition (C5→C6, second branch)
+    NODE 17 ELEV 1213.6   ← Transition (C6→C7, second branch)
+    NODE 18 ELEV 912.0    ← Transition (C7→C8, second branch)
+    NODE 20 ELEV 908.2    ← Special element (FB2 AT 20)
+
+Nodes that are SKIPPED:
+----------------------
+  Node 4  → C3→C3 (intermediate in chain)
+  Node 5  → C3→C3 (intermediate in chain)
+  Node 6  → C3→C3 (intermediate in chain)
+  Node 7  → C3→C3 (intermediate in chain)
+  Node 13 → C8→C9 (specific skip pattern)
+  Node 15 → C4→C5 (parallel branch, duplicate pattern)
+  Node 19 → C8→C9 (specific skip pattern)
+
+================================================================================
+
+VERIFICATION CHECKLIST
+================================================================================
+
+Before finalizing the NODE section, verify:
+
+✓ All nodes with "AT" elements are included
+✓ No intermediate chain nodes are included (where in_elem == out_elem)
+✓ Element transition nodes are included (except C8→C9 pattern)
+✓ First branch after junction has its first node included
+✓ Parallel branches have their first node skipped (if same pattern)
+✓ All nodes are in ascending numerical order
+✓ All elevations have at least one decimal place
+✓ Each line uses exactly 4 spaces for indentation
+✓ Format: "    NODE [num] ELEV [value]"
+
+================================================================================
+
+ADDITIONAL NOTES
+================================================================================
+
+1. The logic is consistent across all .inp files in the reference dataset
+   (HL012.INP, IS1.INP, IS1-1.INP, IS1-MDDL.INP, IS4.INP all show identical patterns)
+
+2. When in doubt about parallel branches:
+   - The FIRST occurrence in file order is the primary branch
+   - Subsequent occurrences with identical element sequences are parallel/duplicate
+
+3. The C8→C9 skip rule appears to be because these are the last two elements
+   before terminal nodes (FB1, FB2), forming a simple two-element sequence
+   that doesn't need the intermediate node representation
+
+4. Junction nodes (JUNCTION AT X) are ALWAYS included regardless of any other rules
+
+================================================================================
+END OF PROMPT
+================================================================================
