@@ -562,10 +562,78 @@ function parseElementProperties(lines: string[]): ParsedElements {
   return { reservoirs, conduits, pumps, turbines, oneway, surgeTanks, flowBCs, oppumps, opturbs, pchar, tchar, vSchedules };
 }
 
+/**
+ * Scan raw .inp lines and build two comment maps:
+ *   nodeComments    — nodeId   → comment text immediately preceding that NODE line
+ *   elementComments — elemId   → comment text immediately preceding that element block
+ * A "pending" comment is cleared when any non-comment, non-blank line consumes it
+ * or when an unrelated line intervenes.
+ */
+function extractComments(rawLines: string[]): {
+  nodeComments: Map<string, string>;
+  elementComments: Map<string, string>;
+} {
+  const nodeComments = new Map<string, string>();
+  const elementComments = new Map<string, string>();
+  let pendingComment = '';
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i].trim();
+
+    // Blank line — preserve pending comment (comments may have a blank separator)
+    if (!line) continue;
+
+    // Comment line — capture text after the leading "c"/"C"
+    if (/^[cC](\s|$)/.test(line)) {
+      const text = line.replace(/^[cC]\s*/, '').trim();
+      if (text) pendingComment = text;
+      continue;
+    }
+
+    // NODE X ELEV Y in the SYSTEM section
+    const nodeM = line.match(/^NODE\s+(\S+)\s+ELEV/i);
+    if (nodeM) {
+      if (pendingComment) { nodeComments.set(nodeM[1], pendingComment); }
+      pendingComment = '';
+      continue;
+    }
+
+    // Element block keyword (RESERVOIR / CONDUIT / PUMP / TURBINE / ONEWAY / SURGETNK / FLOWBC)
+    if (/^(?:RESERVOIR|CONDUIT|PUMP|TURBINE|ONEWAY|SURGETNK|FLOWBC)\b/i.test(line)) {
+      if (pendingComment) {
+        // Check for inline ID first
+        const inlineId = line.match(/\bID\s+(\S+)/i);
+        if (inlineId) {
+          elementComments.set(inlineId[1], pendingComment);
+        } else {
+          // Look ahead for "ID <name>" line
+          for (let j = i + 1; j < rawLines.length; j++) {
+            const next = rawLines[j].trim();
+            if (!next) continue;
+            if (/^FINISH\b/i.test(next) || /^[cC](\s|$)/.test(next)) break;
+            const idM = next.match(/^ID\s+(\S+)/i);
+            if (idM) { elementComments.set(idM[1], pendingComment); break; }
+            break; // any other non-blank line stops the search
+          }
+        }
+      }
+      pendingComment = '';
+      continue;
+    }
+
+    // Any other substantive line — clear pending comment
+    pendingComment = '';
+  }
+
+  return { nodeComments, elementComments };
+}
+
 function buildReactFlowGraph(
   topo: ParsedTopology,
   elems: ParsedElements,
-  projectName: string
+  projectName: string,
+  nodeComments: Map<string, string> = new Map(),
+  elementComments: Map<string, string> = new Map()
 ): { nodes: WhamoNode[]; edges: WhamoEdge[]; pcharData: Record<number, PcharType>; tcharData: Record<number, TcharType>; vSchedules: Record<number, { t: number; g: number }[]> } {
   const { elemLinks, elemAt, junctions, nodeElevations } = topo;
   const { reservoirs, conduits, pumps, turbines, oneway, oppumps, opturbs, surgeTanks, flowBCs } = elems;
@@ -666,7 +734,8 @@ function buildReactFlowGraph(
       nodeObjects.push({
         id: rfId, type: 'reservoir', position: pos,
         data: { label: atElemId, type: 'reservoir', nodeNumber: nodeNum, elevation: elev,
-          reservoirElevation: r.elevation, mode: r.mode as any, hScheduleNumber: r.hScheduleNumber }
+          reservoirElevation: r.elevation, mode: r.mode as any, hScheduleNumber: r.hScheduleNumber,
+          comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && surgeTanks.has(atElemId)) {
       const st = surgeTanks.get(atElemId)!;
@@ -674,14 +743,16 @@ function buildReactFlowGraph(
         id: rfId, type: 'surgeTank', position: pos,
         data: { label: atElemId, type: 'surgeTank', nodeNumber: nodeNum, elevation: elev,
           tankTop: st.tankTop, tankBottom: st.tankBottom, diameter: st.diameter,
-          celerity: st.celerity, friction: st.friction, stType: st.stType }
+          celerity: st.celerity, friction: st.friction, stType: st.stType,
+          comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && flowBCs.has(atElemId)) {
       const fb = flowBCs.get(atElemId)!;
       nodeObjects.push({
         id: rfId, type: 'flowBoundary', position: pos,
         data: { label: atElemId, type: 'flowBoundary', nodeNumber: nodeNum, elevation: elev,
-          scheduleNumber: fb.scheduleNumber }
+          scheduleNumber: fb.scheduleNumber,
+          comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && turbines.has(atElemId)) {
       const t = turbines.get(atElemId)!;
@@ -691,7 +762,8 @@ function buildReactFlowGraph(
         data: { label: atElemId, type: 'turbine', nodeNumber: nodeNum, elevation: elev,
           turbineType: t.turbineType, syncSpeed: t.syncSpeed, wr2: t.wr2,
           turbFriction: t.turbFriction, windage: t.windage,
-          operationMode: opInfo?.mode || 'TURBINE', vScheduleNumber: opInfo?.vScheduleNumber ?? 1 }
+          operationMode: opInfo?.mode || 'TURBINE', vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
+          comment: elementComments.get(atElemId) }
       });
     } else {
       nodeObjects.push({
@@ -703,6 +775,7 @@ function buildReactFlowGraph(
           type: isJunction ? 'junction' : 'node',
           nodeNumber: nodeNum,
           elevation: elev,
+          comment: nodeComments.get(whamoId),
         }
       });
     }
@@ -735,6 +808,7 @@ function buildReactFlowGraph(
         reservoirElevation: r.elevation,
         mode: r.mode as any,
         hScheduleNumber: r.hScheduleNumber,
+        comment: elementComments.get(elemId),
       }
     });
   });
@@ -764,6 +838,7 @@ function buildReactFlowGraph(
         celerity: st.celerity,
         friction: st.friction,
         stType: st.stType,
+        comment: elementComments.get(elemId),
       }
     });
   });
@@ -788,6 +863,7 @@ function buildReactFlowGraph(
         nodeNumber: nodeNum,
         elevation: elev,
         scheduleNumber: fb.scheduleNumber,
+        comment: elementComments.get(elemId),
       }
     });
   });
@@ -819,6 +895,7 @@ function buildReactFlowGraph(
         windage: t.windage,
         operationMode: opInfo?.mode || 'TURBINE',
         vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
+        comment: elementComments.get(elemId),
       }
     });
   });
@@ -849,6 +926,7 @@ function buildReactFlowGraph(
           rspeed: p.rspeed,
           rtorque: p.rtorque,
           wr2: p.wr2,
+          comment: elementComments.get(elemId),
         }
       });
       return;
@@ -874,6 +952,7 @@ function buildReactFlowGraph(
           windage: t.windage,
           operationMode: opInfo?.mode || 'TURBINE',
           vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
+          comment: elementComments.get(elemId),
         }
       });
       return;
@@ -893,6 +972,7 @@ function buildReactFlowGraph(
           type: 'checkValve',
           valveStatus: 'OPEN',
           valveDiam: vc.diam,
+          comment: elementComments.get(elemId),
         }
       });
       return;
@@ -916,6 +996,7 @@ function buildReactFlowGraph(
             hasAddedLoss: c.hasAddedLoss,
             cplus: c.cplus,
             cminus: c.cminus,
+            comment: elementComments.get(elemId),
           }
         });
       } else {
@@ -940,6 +1021,7 @@ function buildReactFlowGraph(
             area: c.area,
             d: c.d,
             a: c.a,
+            comment: elementComments.get(elemId),
           }
         });
       }
@@ -1024,6 +1106,7 @@ export function parseInpFile(content: string): {
 
   const topo = parseSystemSection(systemLines);
   const elems = parseElementProperties(propLines);
+  const { nodeComments, elementComments } = extractComments(rawLines);
 
   // Parse CONTROL block — params may be on one line OR on separate lines
   let dtcomp = 0.01, dtout = 0.1, tmax = 500;
@@ -1047,7 +1130,7 @@ export function parseInpFile(content: string): {
   }
   const computationalParams = { stages: [{ dtcomp, dtout, tmax }], accutest: 'NONE' as const, includeAccutest: true };
 
-  const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName);
+  const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName, nodeComments, elementComments);
 
   // ── Parse OUTPUT REQUEST blocks (HISTORY / PLOT / SPREADSHEET) ────────────
   // Each block starts with its keyword, contains NODE/ELEM lines, ends with FINISH.
