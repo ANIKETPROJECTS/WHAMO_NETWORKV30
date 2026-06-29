@@ -648,15 +648,6 @@ function buildReactFlowGraph(
     y: (posY.get(whamoId) ?? 0) * SPACING_Y + 80,
   });
 
-  const getPumpPos = (from: string, to: string) => {
-    const pf = getPos(from);
-    const pt = getPos(to);
-    return {
-      x: (pf.x + pt.x) / 2,
-      y: (pf.y + pt.y) / 2,
-    };
-  };
-
   const getOrCreateWhamoNode = (whamoId: string): string => {
     if (nodeIdMap.has(whamoId)) return nodeIdMap.get(whamoId)!;
     // Node was not pre-created — figure out what type it is
@@ -832,33 +823,25 @@ function buildReactFlowGraph(
     });
   });
 
-  const usedNodePositions = new Set<string>();
-
   elemLinks.forEach((link, elemId) => {
     const { from, to } = link;
 
+    // Pumps, turbines, and check valves that use LINK are EDGE elements —
+    // they render as a circular icon on the connection line (like a labelled
+    // conduit) rather than as an intermediate node.
     if (pumps.has(elemId)) {
       const p = pumps.get(elemId)!;
-      const rfId = nextId();
-      const pPos = getPumpPos(from, to);
-      const posKey = `${Math.round(pPos.x)},${Math.round(pPos.y)}`;
-      const finalPos = usedNodePositions.has(posKey)
-        ? { x: pPos.x, y: pPos.y + 30 }
-        : pPos;
-      usedNodePositions.add(posKey);
-
       const fromRfId = getOrCreateWhamoNode(from);
       const toRfId = getOrCreateWhamoNode(to);
       const status = oppumps.has(elemId) ? 'ACTIVE' : 'INACTIVE';
-      nodeObjects.push({
-        id: rfId,
-        type: 'pump',
-        position: finalPos,
+      edgeObjects.push({
+        id: nextId(),
+        source: fromRfId,
+        target: toRfId,
+        type: 'connection',
         data: {
           label: elemId,
           type: 'pump',
-          nodeNumber: parseInt(from) || nodeObjects.length,
-          elevation: nodeElevations.get(from) ?? 0,
           pumpStatus: status,
           pumpType: p.pumpType,
           rq: p.rq,
@@ -868,45 +851,22 @@ function buildReactFlowGraph(
           wr2: p.wr2,
         }
       });
-      edgeObjects.push({
-        id: nextId(),
-        source: fromRfId,
-        target: rfId,
-        type: 'connection',
-        data: { label: `${elemId}_in`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
-      });
-      edgeObjects.push({
-        id: nextId(),
-        source: rfId,
-        target: toRfId,
-        type: 'connection',
-        data: { label: `${elemId}_out`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
-      });
       return;
     }
 
     if (turbines.has(elemId)) {
       const t = turbines.get(elemId)!;
-      const rfId = nextId();
-      const tPos = getPumpPos(from, to);
-      const posKey = `${Math.round(tPos.x)},${Math.round(tPos.y)}`;
-      const finalPos = usedNodePositions.has(posKey)
-        ? { x: tPos.x, y: tPos.y + 30 }
-        : tPos;
-      usedNodePositions.add(posKey);
-
       const fromRfId = getOrCreateWhamoNode(from);
       const toRfId = getOrCreateWhamoNode(to);
       const opInfo = opturbs.get(elemId);
-      nodeObjects.push({
-        id: rfId,
-        type: 'turbine',
-        position: finalPos,
+      edgeObjects.push({
+        id: nextId(),
+        source: fromRfId,
+        target: toRfId,
+        type: 'connection',
         data: {
           label: elemId,
           type: 'turbine',
-          nodeNumber: parseInt(from) || nodeObjects.length,
-          elevation: nodeElevations.get(from) ?? 0,
           turbineType: t.turbineType,
           syncSpeed: t.syncSpeed,
           wr2: t.wr2,
@@ -916,55 +876,24 @@ function buildReactFlowGraph(
           vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
         }
       });
-      edgeObjects.push({
-        id: nextId(),
-        source: fromRfId,
-        target: rfId,
-        type: 'connection',
-        data: { label: `${elemId}_in`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
-      });
-      edgeObjects.push({
-        id: nextId(),
-        source: rfId,
-        target: toRfId,
-        type: 'connection',
-        data: { label: `${elemId}_out`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
-      });
       return;
     }
 
     if (oneway.has(elemId)) {
       const vc = oneway.get(elemId)!;
-      const rfId = nextId();
-      const vcPos = getPumpPos(from, to);
       const fromRfId = getOrCreateWhamoNode(from);
       const toRfId = getOrCreateWhamoNode(to);
-      nodeObjects.push({
-        id: rfId,
-        type: 'checkValve',
-        position: vcPos,
-        data: {
-          label: elemId,
-          type: 'checkValve',
-          nodeNumber: parseInt(from) || nodeObjects.length,
-          elevation: nodeElevations.get(from) ?? 0,
-          valveStatus: 'OPEN',
-          valveDiam: vc.diam,
-        }
-      });
       edgeObjects.push({
         id: nextId(),
         source: fromRfId,
-        target: rfId,
-        type: 'connection',
-        data: { label: `${elemId}_in`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
-      });
-      edgeObjects.push({
-        id: nextId(),
-        source: rfId,
         target: toRfId,
         type: 'connection',
-        data: { label: `${elemId}_out`, type: 'conduit', length: 0, diameter: 0, celerity: 0, friction: 0 }
+        data: {
+          label: elemId,
+          type: 'checkValve',
+          valveStatus: 'OPEN',
+          valveDiam: vc.diam,
+        }
       });
       return;
     }
