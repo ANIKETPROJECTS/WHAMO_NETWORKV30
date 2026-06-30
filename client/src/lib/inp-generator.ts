@@ -195,14 +195,11 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
 
   sortedNodeIds.forEach(id => {
     const node = nodes.find(n => (positionMap.get(n.id) ?? n.id) === id);
-    if (node && node.data.elevation !== undefined) {
-      const isSelected = nodeSelectionSet.size > 0 && nodeSelectionSet.has(id);
-      if (isSelected) {
-        const unit = node.data.unit || globalUnit;
-        const elev = toFPS(Number(node.data.elevation), unit, 'elevation');
-        addComment(node.data.comment);
-        addL(`NODE ${id} ELEV ${elev}`);
-      }
+    if (node) {
+      const unit = node.data.unit || globalUnit;
+      const elev = toFPS(Number(node.data.elevation ?? 0), unit, 'elevation');
+      addComment(node.data.comment);
+      addL(`NODE ${id} ELEV ${elev}`);
     }
   });
 
@@ -273,6 +270,16 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     }
     addL('FINISH');
     addL('');
+    // Write UI-only metadata as a comment so it survives INP round-trips
+    const metaParts: string[] = [];
+    if (d.manningsN !== undefined && d.manningsN !== null && d.manningsN !== '') metaParts.push(`manningsN=${d.manningsN}`);
+    if (d.pipeE !== undefined && d.pipeE !== null && d.pipeE !== '') metaParts.push(`pipeE=${d.pipeE}`);
+    if (d.pipeWT !== undefined && d.pipeWT !== null && d.pipeWT !== '') metaParts.push(`pipeWT=${d.pipeWT}`);
+    if (d.materialId !== undefined && d.materialId !== null && d.materialId !== '') metaParts.push(`materialId=${d.materialId}`);
+    if (metaParts.length > 0) {
+      addL(`c WHMETA ${label} ${metaParts.join(' ')}`);
+      addL('');
+    }
   });
 
   edges.filter(e => e.data?.type === 'dummy').forEach(e => {

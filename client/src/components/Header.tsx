@@ -407,7 +407,7 @@ export function Header({
     loadNetwork(
       parsed.nodes,
       parsed.edges,
-      parsed.computationalParams,
+      { ...parsed.computationalParams, hSchedules: parsed.hSchedules },
       parsed.outputRequests,
       parsed.projectName,
       undefined,

@@ -1062,6 +1062,7 @@ export function parseInpFile(content: string): {
   edges: WhamoEdge[];
   projectName: string;
   computationalParams?: any;
+  hSchedules: { number: number; points: { time: number; head: number }[] }[];
   pcharData: Record<number, PcharType>;
   tcharData: Record<number, TcharType>;
   vSchedules: Record<number, { t: number; g: number }[]>;
@@ -1077,6 +1078,29 @@ export function parseInpFile(content: string): {
     if (t === 'c' || t === 'C' || /^[cC]\s/.test(t)) return '';
     return l;
   });
+
+  // ── Parse WHMETA comments (UI-only conduit metadata embedded as comments) ──
+  const conduitMeta: Record<string, { manningsN?: number; pipeE?: number; pipeWT?: number; materialId?: number }> = {};
+  for (const rl of rawLines) {
+    const t = rl.trim();
+    const m = t.match(/^[cC]\s+WHMETA\s+(\S+)\s+(.*)/);
+    if (!m) continue;
+    const conduitId = m[1];
+    const kvStr = m[2];
+    const meta: { manningsN?: number; pipeE?: number; pipeWT?: number; materialId?: number } = {};
+    const pairs = kvStr.match(/(\w+)=([\S]+)/g) || [];
+    pairs.forEach(pair => {
+      const [k, v] = pair.split('=');
+      const num = parseFloat(v);
+      if (!isNaN(num)) {
+        if (k === 'manningsN') meta.manningsN = num;
+        else if (k === 'pipeE') meta.pipeE = num;
+        else if (k === 'pipeWT') meta.pipeWT = num;
+        else if (k === 'materialId') meta.materialId = num;
+      }
+    });
+    conduitMeta[conduitId] = meta;
+  }
 
   let projectName = 'Imported Network';
   // Use the first non-empty, non-keyword raw line as the project name if it exists
@@ -1130,7 +1154,47 @@ export function parseInpFile(content: string): {
   }
   const computationalParams = { stages: [{ dtcomp, dtout, tmax }], accutest: 'NONE' as const, includeAccutest: true };
 
+  // ── Parse SCHEDULE HSCHEDULE blocks ────────────────────────────────────────
+  const hSchedules: { number: number; points: { time: number; head: number }[] }[] = [];
+  {
+    let inSchedule = false;
+    let currentHSchedNum: number | null = null;
+    let currentPoints: { time: number; head: number }[] = [];
+
+    for (const rl of rawLines) {
+      const t = rl.trim();
+      if (!t) continue;
+      if (/^SCHEDULE\b/i.test(t)) { inSchedule = true; currentHSchedNum = null; currentPoints = []; continue; }
+      if (!inSchedule) continue;
+      if (/^FINISH\b/i.test(t)) {
+        if (currentHSchedNum !== null && currentPoints.length > 0) {
+          hSchedules.push({ number: currentHSchedNum, points: [...currentPoints] });
+        }
+        inSchedule = false; currentHSchedNum = null; currentPoints = [];
+        continue;
+      }
+      const hschedM = t.match(/\bHSCHEDULE\s+(\d+)/i);
+      if (hschedM) { currentHSchedNum = parseInt(hschedM[1]); continue; }
+      if (currentHSchedNum !== null) {
+        const thM = t.match(/\bT\s+([\d.]+)\s+H\s+([\-\d.]+)/i);
+        if (thM) currentPoints.push({ time: parseFloat(thM[1]), head: parseFloat(thM[2]) });
+      }
+    }
+  }
+
   const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName, nodeComments, elementComments);
+
+  // ── Apply WHMETA conduit metadata to parsed edges ──────────────────────────
+  for (const edge of edges) {
+    const label = String(edge.data?.label ?? '');
+    const meta = conduitMeta[label];
+    if (meta && edge.data?.type === 'conduit') {
+      if (meta.manningsN !== undefined) (edge.data as any).manningsN = meta.manningsN;
+      if (meta.pipeE !== undefined) (edge.data as any).pipeE = meta.pipeE;
+      if (meta.pipeWT !== undefined) (edge.data as any).pipeWT = meta.pipeWT;
+      if (meta.materialId !== undefined) (edge.data as any).materialId = meta.materialId;
+    }
+  }
 
   // ── Parse OUTPUT REQUEST blocks (HISTORY / PLOT / SPREADSHEET) ────────────
   // Each block starts with its keyword, contains NODE/ELEM lines, ends with FINISH.
@@ -1204,5 +1268,5 @@ export function parseInpFile(content: string): {
   // setAllNodesSelected — because RF IDs are non-contiguous (edges share the ID counter).
   const nodeSelectionSet = nodes.map(n => n.data?.nodeNumber?.toString() ?? n.id);
 
-  return { nodes, edges, projectName, computationalParams, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet };
+  return { nodes, edges, projectName, computationalParams, hSchedules, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet };
 }
