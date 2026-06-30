@@ -17,7 +17,13 @@ interface ParsedElements {
   pumps: Map<string, { pumpType: number; rq: number; rhead: number; rspeed: number; rtorque: number; wr2: number }>;
   turbines: Map<string, { turbineType: number; syncSpeed: number; wr2: number; turbFriction: number; windage: number }>;
   oneway: Map<string, { diam: number }>;
-  surgeTanks: Map<string, { stType: string; tankTop: number; tankBottom: number; diameter: number; celerity: number; friction: number }>;
+  surgeTanks: Map<string, {
+    stType: string; tankTop: number; tankBottom: number; diameter: number;
+    celerity: number; friction: number;
+    initialWaterLevel?: number; riserDiameter?: number; riserTop?: number;
+    hasShape?: boolean; shape?: { e: number; a: number }[];
+    hasAddedLoss?: boolean; cplus?: number; cminus?: number;
+  }>;
   flowBCs: Map<string, { scheduleNumber: number }>;
   oppumps: Set<string>;
   opturbs: Map<string, { mode: string; vScheduleNumber?: number }>;
@@ -499,12 +505,14 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^SURGETANK\b/i.test(upper)) {
       const block = [trimmed];
+      const rawBlock: string[] = [trimmed];
       for (let j = i + 1; j < lines.length; j++) {
         const ln = lines[j].trim();
         if (!ln) continue;
         if (/^FINISH\b/i.test(ln)) { i = j; break; }
         if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
         block.push(ln);
+        rawBlock.push(ln);
       }
       const combined = block.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -515,6 +523,22 @@ function parseElementProperties(lines: string[]): ParsedElements {
         const diamM = combined.match(/\bDIAM(?:ETER)?\s+([\-\d.]+)/i);
         const celM = combined.match(/\bCEL(?:ERITY)?\s+([\-\d.]+)/i);
         const fricM = combined.match(/\bFRIC(?:TION)?\s+([\-\d.]+)/i);
+        const htankM = combined.match(/\bHTANK\s+([\-\d.]+)/i);
+        const riserDiamM = combined.match(/\bRISERDIAM\s+([\-\d.]+)/i);
+        const riserTopM = combined.match(/\bRISERTOP\s+([\-\d.]+)/i);
+        const hasAddedLoss = /\bADDEDLOSS\b/i.test(combined);
+        const cplusM = combined.match(/\bCPLUS\s+([\-\d.e+]+)/i);
+        const cminusM = combined.match(/\bCMINUS\s+([\-\d.e+]+)/i);
+        // Parse SHAPE E/A pairs
+        let hasShape = false;
+        const shape: { e: number; a: number }[] = [];
+        if (/\bSHAPE\b/i.test(combined)) {
+          hasShape = true;
+          const eVals = [...combined.matchAll(/\bE\s+([\-\d.]+)/gi)].map(m => parseFloat(m[1]));
+          const aVals = [...combined.matchAll(/\bA\s+([\-\d.]+)/gi)].map(m => parseFloat(m[1]));
+          const pairCount = Math.min(eVals.length, aVals.length);
+          for (let p = 0; p < pairCount; p++) shape.push({ e: eVals[p], a: aVals[p] });
+        }
         surgeTanks.set(idM[1], {
           stType: stTypeM ? stTypeM[1].toUpperCase() : 'SIMPLE',
           tankTop: topM ? parseFloat(topM[1]) : 0,
@@ -522,6 +546,12 @@ function parseElementProperties(lines: string[]): ParsedElements {
           diameter: diamM ? parseFloat(diamM[1]) : 0,
           celerity: celM ? parseFloat(celM[1]) : 0,
           friction: fricM ? parseFloat(fricM[1]) : 0,
+          initialWaterLevel: htankM ? parseFloat(htankM[1]) : undefined,
+          riserDiameter: riserDiamM ? parseFloat(riserDiamM[1]) : undefined,
+          riserTop: riserTopM ? parseFloat(riserTopM[1]) : undefined,
+          hasShape, shape: hasShape ? shape : undefined,
+          hasAddedLoss, cplus: cplusM ? parseFloat(cplusM[1]) : 0,
+          cminus: cminusM ? parseFloat(cminusM[1]) : 0,
         });
       }
       continue;
@@ -743,7 +773,10 @@ function buildReactFlowGraph(
         id: rfId, type: 'surgeTank', position: pos,
         data: { label: atElemId, type: 'surgeTank', nodeNumber: nodeNum, elevation: elev,
           tankTop: st.tankTop, tankBottom: st.tankBottom, diameter: st.diameter,
-          celerity: st.celerity, friction: st.friction, stType: st.stType,
+          celerity: st.celerity, friction: st.friction, type_st: st.stType,
+          initialWaterLevel: st.initialWaterLevel, riserDiameter: st.riserDiameter, riserTop: st.riserTop,
+          hasShape: st.hasShape, shape: st.shape,
+          hasAddedLoss: st.hasAddedLoss, cplus: st.cplus, cminus: st.cminus,
           comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && flowBCs.has(atElemId)) {
@@ -837,7 +870,15 @@ function buildReactFlowGraph(
         diameter: st.diameter,
         celerity: st.celerity,
         friction: st.friction,
-        stType: st.stType,
+        type_st: st.stType,
+        initialWaterLevel: st.initialWaterLevel,
+        riserDiameter: st.riserDiameter,
+        riserTop: st.riserTop,
+        hasShape: st.hasShape,
+        shape: st.shape,
+        hasAddedLoss: st.hasAddedLoss,
+        cplus: st.cplus,
+        cminus: st.cminus,
         comment: elementComments.get(elemId),
       }
     });
