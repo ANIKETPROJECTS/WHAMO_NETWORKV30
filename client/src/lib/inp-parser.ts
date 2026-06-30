@@ -800,6 +800,24 @@ function buildReactFlowGraph(
           operationMode: opInfo?.mode || 'TURBINE', vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
           comment: elementComments.get(atElemId) }
       });
+    } else if (atElemId && pumps.has(atElemId)) {
+      const p = pumps.get(atElemId)!;
+      const status = oppumps.has(atElemId) ? 'ACTIVE' : 'INACTIVE';
+      nodeObjects.push({
+        id: rfId, type: 'pump', position: pos,
+        data: { label: atElemId, type: 'pump', nodeNumber: nodeNum, elevation: elev,
+          pumpStatus: status, pumpType: p.pumpType, rq: p.rq, rhead: p.rhead,
+          rspeed: p.rspeed, rtorque: p.rtorque, wr2: p.wr2,
+          comment: elementComments.get(atElemId) }
+      });
+    } else if (atElemId && oneway.has(atElemId)) {
+      const vc = oneway.get(atElemId)!;
+      nodeObjects.push({
+        id: rfId, type: 'checkValve', position: pos,
+        data: { label: atElemId, type: 'checkValve', nodeNumber: nodeNum, elevation: elev,
+          valveStatus: 'OPEN', valveDiam: vc.diam,
+          comment: elementComments.get(atElemId) }
+      });
     } else {
       nodeObjects.push({
         id: rfId,
@@ -939,6 +957,64 @@ function buildReactFlowGraph(
         turbineDiameter: t.turbineDiameter,
         operationMode: opInfo?.mode || 'TURBINE',
         vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
+        comment: elementComments.get(elemId),
+      }
+    });
+  });
+
+  // Pumps AT nodes
+  elemAt.forEach((nodeId, elemId) => {
+    if (!pumps.has(elemId)) return;
+    if (nodeIdMap.has(nodeId)) return;
+    const p = pumps.get(elemId)!;
+    const rfId = nextId();
+    nodeIdMap.set(nodeId, rfId);
+    const elev = nodeElevations.get(nodeId) ?? 0;
+    const pos = getPos(nodeId);
+    const nodeNum = parseInt(nodeId) || nodeObjects.length + 1;
+    const status = oppumps.has(elemId) ? 'ACTIVE' : 'INACTIVE';
+    nodeObjects.push({
+      id: rfId,
+      type: 'pump',
+      position: pos,
+      data: {
+        label: elemId,
+        type: 'pump',
+        nodeNumber: nodeNum,
+        elevation: elev,
+        pumpStatus: status,
+        pumpType: p.pumpType,
+        rq: p.rq,
+        rhead: p.rhead,
+        rspeed: p.rspeed,
+        rtorque: p.rtorque,
+        wr2: p.wr2,
+        comment: elementComments.get(elemId),
+      }
+    });
+  });
+
+  // Check Valves (ONEWAY) AT nodes
+  elemAt.forEach((nodeId, elemId) => {
+    if (!oneway.has(elemId)) return;
+    if (nodeIdMap.has(nodeId)) return;
+    const vc = oneway.get(elemId)!;
+    const rfId = nextId();
+    nodeIdMap.set(nodeId, rfId);
+    const elev = nodeElevations.get(nodeId) ?? 0;
+    const pos = getPos(nodeId);
+    const nodeNum = parseInt(nodeId) || nodeObjects.length + 1;
+    nodeObjects.push({
+      id: rfId,
+      type: 'checkValve',
+      position: pos,
+      data: {
+        label: elemId,
+        type: 'checkValve',
+        nodeNumber: nodeNum,
+        elevation: elev,
+        valveStatus: 'OPEN',
+        valveDiam: vc.diam,
         comment: elementComments.get(elemId),
       }
     });
