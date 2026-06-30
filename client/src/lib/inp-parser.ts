@@ -15,7 +15,7 @@ interface ParsedElements {
     variable?: boolean; distance?: number; area?: number; d?: number; a?: number;
   }>;
   pumps: Map<string, { pumpType: number; rq: number; rhead: number; rspeed: number; rtorque: number; wr2: number }>;
-  turbines: Map<string, { turbineType: number; syncSpeed: number; wr2: number; turbFriction: number; windage: number }>;
+  turbines: Map<string, { turbineType: number; syncSpeed: number; wr2: number; turbFriction: number; windage: number; turbineDiameter?: number }>;
   oneway: Map<string, { diam: number }>;
   surgeTanks: Map<string, {
     stType: string; tankTop: number; tankBottom: number; diameter: number;
@@ -292,6 +292,7 @@ function parseElementProperties(lines: string[]): ParsedElements {
       const wr2M = combined.match(/\bWR2\s+([\-\d.]+)/i);
       const fricM = combined.match(/\bFRICTION\s+([\-\d.]+)/i);
       const windM = combined.match(/\bWINDAGE\s+([\-\d.]+)/i);
+      const turbDiamM = combined.match(/\bDIAMETER\s+([\-\d.]+)/i);
       if (idM) {
         turbines.set(idM[1], {
           turbineType: typeM ? parseInt(typeM[1]) : 1,
@@ -299,6 +300,7 @@ function parseElementProperties(lines: string[]): ParsedElements {
           wr2: wr2M ? parseFloat(wr2M[1]) : 0,
           turbFriction: fricM ? parseFloat(fricM[1]) : 0,
           windage: windM ? parseFloat(windM[1]) : 0,
+          turbineDiameter: turbDiamM ? parseFloat(turbDiamM[1]) : undefined,
         });
       }
       continue;
@@ -317,8 +319,8 @@ function parseElementProperties(lines: string[]): ParsedElements {
       const combined = block.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
       if (idM) {
-        const isGenerate = /\bGENERATE\b/i.test(combined);
-        const mode = isGenerate ? 'GENERATE' : 'TURBINE';
+        const modeM = combined.match(/\b(GENERATE|TURBGOV|EMERGENCY|TURBINE)\b/i);
+        const mode = modeM ? modeM[1].toUpperCase() : 'TURBINE';
         const vSchedM = combined.match(/\bVSCHEDULE\s+(\d+)/i);
         const vSchedNum = vSchedM ? parseInt(vSchedM[1]) : undefined;
         opturbs.set(idM[1], { mode, vScheduleNumber: vSchedNum });
@@ -794,7 +796,7 @@ function buildReactFlowGraph(
         id: rfId, type: 'turbine', position: pos,
         data: { label: atElemId, type: 'turbine', nodeNumber: nodeNum, elevation: elev,
           turbineType: t.turbineType, syncSpeed: t.syncSpeed, wr2: t.wr2,
-          turbFriction: t.turbFriction, windage: t.windage,
+          turbFriction: t.turbFriction, windage: t.windage, turbineDiameter: t.turbineDiameter,
           operationMode: opInfo?.mode || 'TURBINE', vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
           comment: elementComments.get(atElemId) }
       });
@@ -934,6 +936,7 @@ function buildReactFlowGraph(
         wr2: t.wr2,
         turbFriction: t.turbFriction,
         windage: t.windage,
+        turbineDiameter: t.turbineDiameter,
         operationMode: opInfo?.mode || 'TURBINE',
         vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
         comment: elementComments.get(elemId),
@@ -991,6 +994,7 @@ function buildReactFlowGraph(
           wr2: t.wr2,
           turbFriction: t.turbFriction,
           windage: t.windage,
+          turbineDiameter: t.turbineDiameter,
           operationMode: opInfo?.mode || 'TURBINE',
           vScheduleNumber: opInfo?.vScheduleNumber ?? 1,
           comment: elementComments.get(elemId),
