@@ -225,7 +225,10 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     if (n.data.mode === 'schedule') {
       addL(` HSCHEDULE ${n.data.hScheduleNumber || 1}`);
     } else {
-      addL(` ELEV ${toFPS(Number(n.data.reservoirElevation || 0), unit, 'elevation')}`);
+      const resElev = (n.data.reservoirElevation !== undefined && n.data.reservoirElevation !== null && n.data.reservoirElevation !== '' && Number(n.data.reservoirElevation) !== 0)
+        ? Number(n.data.reservoirElevation)
+        : Number(n.data.elevation ?? 0);
+      addL(` ELEV ${toFPS(resElev, unit, 'elevation')}`);
     }
     addL(' FINISH');
     addL('');
@@ -253,8 +256,10 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     }
 
     addL(` LENGTH ${toFPS(Number(d.length), unit, 'length')}`);
-    if (!d.variable) {
+    if (d.diameter !== undefined && d.diameter !== null && d.diameter !== '' && Number(d.diameter) !== 0) {
       addL(` DIAM ${toFPS(Number(d.diameter), unit, 'diameter')}`);
+    } else if (!d.variable) {
+      addL(` DIAM 0`);
     }
     addL(` CELERITY ${toFPS(Number(d.celerity), unit, 'celerity')}`);
     addL(` FRICTION ${d.friction}`);

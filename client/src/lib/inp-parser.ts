@@ -766,7 +766,7 @@ function buildReactFlowGraph(
       nodeObjects.push({
         id: rfId, type: 'reservoir', position: pos,
         data: { label: atElemId, type: 'reservoir', nodeNumber: nodeNum, elevation: elev,
-          reservoirElevation: r.elevation, mode: r.mode as any, hScheduleNumber: r.hScheduleNumber,
+          reservoirElevation: r.elevation || elev, mode: r.mode as any, hScheduleNumber: r.hScheduleNumber,
           comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && surgeTanks.has(atElemId)) {
@@ -840,7 +840,7 @@ function buildReactFlowGraph(
         type: 'reservoir',
         nodeNumber: nodeNum,
         elevation: elev,
-        reservoirElevation: r.elevation,
+        reservoirElevation: r.elevation || elev,
         mode: r.mode as any,
         hScheduleNumber: r.hScheduleNumber,
         comment: elementComments.get(elemId),
