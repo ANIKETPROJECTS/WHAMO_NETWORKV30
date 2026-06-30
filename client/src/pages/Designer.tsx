@@ -631,10 +631,10 @@ function DesignerInner() {
             throw new Error("Invalid JSON format");
           }
         } else if (fileName.endsWith('.inp')) {
-          const { nodes, edges, projectName: parsedName, computationalParams: parsedParams, hSchedules: parsedHSchedules, pcharData, tcharData, vSchedules, outputRequests: parsedRequests, nodeSelectionSet: parsedNodeSel } = parseInpFile(content);
+          const { nodes, edges, projectName: parsedName, computationalParams: parsedParams, hSchedules: parsedHSchedules, qSchedules: parsedQSchedules, pcharData, tcharData, vSchedules, outputRequests: parsedRequests, nodeSelectionSet: parsedNodeSel } = parseInpFile(content);
           if (nodes.length > 0) {
             const loadedProjectName = parsedName || file.name.replace(/\.inp$/i, '');
-            loadNetwork(nodes, edges, { ...parsedParams, hSchedules: parsedHSchedules }, parsedRequests, loadedProjectName, undefined, pcharData, undefined, parsedNodeSel, tcharData, vSchedules);
+            loadNetwork(nodes, edges, { ...parsedParams, hSchedules: parsedHSchedules, qSchedules: parsedQSchedules }, parsedRequests, loadedProjectName, undefined, pcharData, undefined, parsedNodeSel, tcharData, vSchedules);
             setProjectState("active");
             setServerProjectId(null);
             toast({ title: "Project Loaded", description: `Network topology "${loadedProjectName}" restored from .inp file.` });
@@ -815,10 +815,10 @@ function DesignerInner() {
             toast({ title: "Project Loaded", description: `"${name}" imported from file.` });
           }
         } else if (fileName.endsWith('.inp')) {
-          const { nodes: n, edges: e, projectName: pn, computationalParams: cp, hSchedules: hs, pcharData: pd, tcharData: td, vSchedules: vs, outputRequests: reqs, nodeSelectionSet: nodeSel } = parseInpFile(content);
+          const { nodes: n, edges: e, projectName: pn, computationalParams: cp, hSchedules: hs, qSchedules: qs, pcharData: pd, tcharData: td, vSchedules: vs, outputRequests: reqs, nodeSelectionSet: nodeSel } = parseInpFile(content);
           if (n.length > 0) {
             const name = pn || file.name.replace(/\.inp$/i, '');
-            loadNetwork(n, e, { ...cp, hSchedules: hs }, reqs, name, handle, pd, undefined, nodeSel, td, vs);
+            loadNetwork(n, e, { ...cp, hSchedules: hs, qSchedules: qs }, reqs, name, handle, pd, undefined, nodeSel, td, vs);
             setProjectState("active");
             setServerProjectId(null);
             setShowProjectsList(false);

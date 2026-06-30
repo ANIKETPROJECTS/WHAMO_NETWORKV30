@@ -1108,6 +1108,7 @@ export function parseInpFile(content: string): {
   projectName: string;
   computationalParams?: any;
   hSchedules: { number: number; points: { time: number; head: number }[] }[];
+  qSchedules: Record<number, { time: number; flow: number }[]>;
   pcharData: Record<number, PcharType>;
   tcharData: Record<number, TcharType>;
   vSchedules: Record<number, { t: number; g: number }[]>;
@@ -1176,30 +1177,56 @@ export function parseInpFile(content: string): {
   }
   const computationalParams = { stages: [{ dtcomp, dtout, tmax }], accutest: 'NONE' as const, includeAccutest: true };
 
-  // ── Parse SCHEDULE HSCHEDULE blocks ────────────────────────────────────────
+  // ── Parse SCHEDULE blocks (HSCHEDULE and QSCHEDULE) ───────────────────────
   const hSchedules: { number: number; points: { time: number; head: number }[] }[] = [];
+  const qSchedules: Record<number, { time: number; flow: number }[]> = {};
   {
     let inSchedule = false;
     let currentHSchedNum: number | null = null;
-    let currentPoints: { time: number; head: number }[] = [];
+    let currentHPoints: { time: number; head: number }[] = [];
 
     for (const rl of rawLines) {
       const t = rl.trim();
       if (!t) continue;
-      if (/^SCHEDULE\b/i.test(t)) { inSchedule = true; currentHSchedNum = null; currentPoints = []; continue; }
-      if (!inSchedule) continue;
-      if (/^FINISH\b/i.test(t)) {
-        if (currentHSchedNum !== null && currentPoints.length > 0) {
-          hSchedules.push({ number: currentHSchedNum, points: [...currentPoints] });
+      if (/^SCHEDULE\b/i.test(t)) {
+        inSchedule = true;
+        // Also check for inline QSCHEDULE on the same line: "SCHEDULE QSCHEDULE 1 T 0 Q ..."
+        const inlineQ = t.match(/\bQSCHEDULE\s+(\d+)\s+(.*)/i);
+        if (inlineQ) {
+          const num = parseInt(inlineQ[1]);
+          const pts: { time: number; flow: number }[] = [];
+          const tqPairs = [...inlineQ[2].matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+          tqPairs.forEach(m => pts.push({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
+          if (pts.length > 0) qSchedules[num] = pts;
         }
-        inSchedule = false; currentHSchedNum = null; currentPoints = [];
+        currentHSchedNum = null; currentHPoints = [];
         continue;
       }
+      if (!inSchedule) continue;
+      if (/^FINISH\b/i.test(t)) {
+        if (currentHSchedNum !== null && currentHPoints.length > 0) {
+          hSchedules.push({ number: currentHSchedNum, points: [...currentHPoints] });
+        }
+        inSchedule = false; currentHSchedNum = null; currentHPoints = [];
+        continue;
+      }
+      // QSCHEDULE line (inline format): QSCHEDULE <num> T <t> Q <q> T <t> Q <q> ...
+      const qschedM = t.match(/^QSCHEDULE\s+(\d+)\s+(.*)/i);
+      if (qschedM) {
+        const num = parseInt(qschedM[1]);
+        const pts: { time: number; flow: number }[] = [];
+        const tqPairs = [...qschedM[2].matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+        tqPairs.forEach(m => pts.push({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
+        if (pts.length > 0) qSchedules[num] = pts;
+        continue;
+      }
+      // HSCHEDULE header line
       const hschedM = t.match(/\bHSCHEDULE\s+(\d+)/i);
-      if (hschedM) { currentHSchedNum = parseInt(hschedM[1]); continue; }
+      if (hschedM) { currentHSchedNum = parseInt(hschedM[1]); currentHPoints = []; continue; }
+      // T/H pair line within an HSCHEDULE block
       if (currentHSchedNum !== null) {
-        const thM = t.match(/\bT\s+([\d.]+)\s+H\s+([\-\d.]+)/i);
-        if (thM) currentPoints.push({ time: parseFloat(thM[1]), head: parseFloat(thM[2]) });
+        const thM = t.match(/\bT\s+([\-\d.]+)\s+H\s+([\-\d.]+)/i);
+        if (thM) currentHPoints.push({ time: parseFloat(thM[1]), head: parseFloat(thM[2]) });
       }
     }
   }
@@ -1291,5 +1318,5 @@ export function parseInpFile(content: string): {
   // setAllNodesSelected — because RF IDs are non-contiguous (edges share the ID counter).
   const nodeSelectionSet = nodes.map(n => n.data?.nodeNumber?.toString() ?? n.id);
 
-  return { nodes, edges, projectName, computationalParams, hSchedules, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet };
+  return { nodes, edges, projectName, computationalParams, hSchedules, qSchedules, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet };
 }
