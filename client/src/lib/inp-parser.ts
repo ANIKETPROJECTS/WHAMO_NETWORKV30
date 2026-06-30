@@ -1079,29 +1079,6 @@ export function parseInpFile(content: string): {
     return l;
   });
 
-  // ── Parse WHMETA comments (UI-only conduit metadata embedded as comments) ──
-  const conduitMeta: Record<string, { manningsN?: number; pipeE?: number; pipeWT?: number; materialId?: number }> = {};
-  for (const rl of rawLines) {
-    const t = rl.trim();
-    const m = t.match(/^[cC]\s+WHMETA\s+(\S+)\s+(.*)/);
-    if (!m) continue;
-    const conduitId = m[1];
-    const kvStr = m[2];
-    const meta: { manningsN?: number; pipeE?: number; pipeWT?: number; materialId?: number } = {};
-    const pairs = kvStr.match(/(\w+)=([\S]+)/g) || [];
-    pairs.forEach(pair => {
-      const [k, v] = pair.split('=');
-      const num = parseFloat(v);
-      if (!isNaN(num)) {
-        if (k === 'manningsN') meta.manningsN = num;
-        else if (k === 'pipeE') meta.pipeE = num;
-        else if (k === 'pipeWT') meta.pipeWT = num;
-        else if (k === 'materialId') meta.materialId = num;
-      }
-    });
-    conduitMeta[conduitId] = meta;
-  }
-
   let projectName = 'Imported Network';
   // Use the first non-empty, non-keyword raw line as the project name if it exists
   for (const rl of rawLines) {
@@ -1184,27 +1161,16 @@ export function parseInpFile(content: string): {
 
   const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName, nodeComments, elementComments);
 
-  // ── Apply WHMETA conduit metadata to parsed edges ──────────────────────────
-  // Also back-calculate Manning's n from friction + diameter when not in WHMETA.
+  // ── Back-calculate Manning's n from friction + diameter ────────────────────
   // Formula: f = 185·n²/D^(1/3)  →  n = sqrt(f·D^(1/3) / 185)
   for (const edge of edges) {
-    const label = String(edge.data?.label ?? '');
-    const meta = conduitMeta[label];
     if (edge.data?.type === 'conduit') {
-      if (meta?.manningsN !== undefined) {
-        (edge.data as any).manningsN = meta.manningsN;
-      } else {
-        // Back-calculate from friction factor and diameter stored in the INP
-        const f = parseFloat(String((edge.data as any).friction ?? 0));
-        const D = parseFloat(String((edge.data as any).diameter ?? 0));
-        if (f > 0 && D > 0) {
-          const n = Math.sqrt((f * Math.pow(D, 1 / 3)) / 185);
-          if (isFinite(n) && n > 0) (edge.data as any).manningsN = parseFloat(n.toFixed(6));
-        }
+      const f = parseFloat(String((edge.data as any).friction ?? 0));
+      const D = parseFloat(String((edge.data as any).diameter ?? 0));
+      if (f > 0 && D > 0) {
+        const n = Math.sqrt((f * Math.pow(D, 1 / 3)) / 185);
+        if (isFinite(n) && n > 0) (edge.data as any).manningsN = parseFloat(n.toFixed(6));
       }
-      if (meta?.pipeE !== undefined) (edge.data as any).pipeE = meta.pipeE;
-      if (meta?.pipeWT !== undefined) (edge.data as any).pipeWT = meta.pipeWT;
-      if (meta?.materialId !== undefined) (edge.data as any).materialId = meta.materialId;
     }
   }
 
