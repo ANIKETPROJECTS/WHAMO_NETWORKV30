@@ -1185,14 +1185,26 @@ export function parseInpFile(content: string): {
   const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName, nodeComments, elementComments);
 
   // ── Apply WHMETA conduit metadata to parsed edges ──────────────────────────
+  // Also back-calculate Manning's n from friction + diameter when not in WHMETA.
+  // Formula: f = 185·n²/D^(1/3)  →  n = sqrt(f·D^(1/3) / 185)
   for (const edge of edges) {
     const label = String(edge.data?.label ?? '');
     const meta = conduitMeta[label];
-    if (meta && edge.data?.type === 'conduit') {
-      if (meta.manningsN !== undefined) (edge.data as any).manningsN = meta.manningsN;
-      if (meta.pipeE !== undefined) (edge.data as any).pipeE = meta.pipeE;
-      if (meta.pipeWT !== undefined) (edge.data as any).pipeWT = meta.pipeWT;
-      if (meta.materialId !== undefined) (edge.data as any).materialId = meta.materialId;
+    if (edge.data?.type === 'conduit') {
+      if (meta?.manningsN !== undefined) {
+        (edge.data as any).manningsN = meta.manningsN;
+      } else {
+        // Back-calculate from friction factor and diameter stored in the INP
+        const f = parseFloat(String((edge.data as any).friction ?? 0));
+        const D = parseFloat(String((edge.data as any).diameter ?? 0));
+        if (f > 0 && D > 0) {
+          const n = Math.sqrt((f * Math.pow(D, 1 / 3)) / 185);
+          if (isFinite(n) && n > 0) (edge.data as any).manningsN = parseFloat(n.toFixed(6));
+        }
+      }
+      if (meta?.pipeE !== undefined) (edge.data as any).pipeE = meta.pipeE;
+      if (meta?.pipeWT !== undefined) (edge.data as any).pipeWT = meta.pipeWT;
+      if (meta?.materialId !== undefined) (edge.data as any).materialId = meta.materialId;
     }
   }
 
