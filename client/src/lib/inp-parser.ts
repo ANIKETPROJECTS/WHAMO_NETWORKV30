@@ -1155,27 +1155,42 @@ export function parseInpFile(content: string): {
   const elems = parseElementProperties(propLines);
   const { nodeComments, elementComments } = extractComments(rawLines);
 
-  // Parse CONTROL block — params may be on one line OR on separate lines
-  let dtcomp = 0.01, dtout = 0.1, tmax = 500;
+  // Parse CONTROL block — supports multiple stages and ACCUTEST
+  const parsedStages: { dtcomp: number; dtout: number; tmax: number }[] = [];
+  let parsedAccutest: string = 'NONE';
   {
     let inControl = false;
+    let pendingDtcomp: number | null = null;
+    let pendingDtout: number | null = null;
     for (const line of lines) {
       const t = line.trim();
       if (!t) continue;
       if (/^CONTROL\b/i.test(t)) { inControl = true; continue; }
-      if (inControl) {
-        if (/^FINISH\b/i.test(t)) break;
-        // Try all-on-one-line format first
-        const oneLine = t.match(/DTCOMP\s+([\d.]+)\s+DTOUT\s+([\d.]+)\s+TMAX\s+([\d.]+)/i);
-        if (oneLine) { dtcomp = parseFloat(oneLine[1]); dtout = parseFloat(oneLine[2]); tmax = parseFloat(oneLine[3]); continue; }
-        // Separate-line format
-        const dtM = t.match(/^DTCOMP\s+([\d.]+)/i); if (dtM) { dtcomp = parseFloat(dtM[1]); }
-        const doM = t.match(/^DTOUT\s+([\d.]+)/i);  if (doM) { dtout  = parseFloat(doM[1]); }
-        const tmM = t.match(/^TMAX\s+([\d.]+)/i);   if (tmM) { tmax   = parseFloat(tmM[1]); }
+      if (!inControl) continue;
+      if (/^FINISH\b/i.test(t)) break;
+      // All-on-one-line: DTCOMP x DTOUT y TMAX z
+      const oneLine = t.match(/DTCOMP\s+([\d.]+)\s+DTOUT\s+([\d.]+)\s+TMAX\s+([\d.]+)/i);
+      if (oneLine) {
+        parsedStages.push({ dtcomp: parseFloat(oneLine[1]), dtout: parseFloat(oneLine[2]), tmax: parseFloat(oneLine[3]) });
+        continue;
       }
+      // Separate lines: accumulate then emit on TMAX
+      const dtM = t.match(/^DTCOMP\s+([\d.]+)/i); if (dtM) pendingDtcomp = parseFloat(dtM[1]);
+      const doM = t.match(/^DTOUT\s+([\d.]+)/i);  if (doM) pendingDtout  = parseFloat(doM[1]);
+      const tmM = t.match(/^TMAX\s+([\d.]+)/i);
+      if (tmM) {
+        parsedStages.push({ dtcomp: pendingDtcomp ?? 0.01, dtout: pendingDtout ?? 0.1, tmax: parseFloat(tmM[1]) });
+        pendingDtcomp = null; pendingDtout = null;
+      }
+      const acM = t.match(/^ACCUTEST\s+(\S+)/i); if (acM) parsedAccutest = acM[1].toUpperCase();
     }
   }
-  const computationalParams = { stages: [{ dtcomp, dtout, tmax }], accutest: 'NONE' as const, includeAccutest: true };
+  if (parsedStages.length === 0) parsedStages.push({ dtcomp: 0.01, dtout: 0.1, tmax: 500 });
+  const computationalParams = {
+    stages: parsedStages,
+    accutest: parsedAccutest as any,
+    includeAccutest: parsedAccutest !== 'NONE',
+  };
 
   // ── Parse SCHEDULE blocks (HSCHEDULE and QSCHEDULE) ───────────────────────
   const hSchedules: { number: number; points: { time: number; head: number }[] }[] = [];
