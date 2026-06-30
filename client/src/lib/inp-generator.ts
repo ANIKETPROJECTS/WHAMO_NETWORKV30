@@ -580,7 +580,7 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     addL('SCHEDULE');
     addL(`  HSCHEDULE ${num}`);
     sched.points.forEach(p => {
-      addL(`   T ${p.time.toFixed(1)}  H   ${toFPS(Number(p.head), globalUnit, 'elevation')}`);
+      addL(`   T ${Number(p.time).toFixed(1)}  H   ${toFPS(Number(p.head), globalUnit, 'elevation')}`);
     });
     addL('FINISH');
     addL('');
