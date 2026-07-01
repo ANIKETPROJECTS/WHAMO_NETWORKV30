@@ -601,6 +601,57 @@ function parseElementProperties(lines: string[]): ParsedElements {
  * A "pending" comment is cleared when any non-comment, non-blank line consumes it
  * or when an unrelated line intervenes.
  */
+// Generic WHAMO section-header / divider comments that appear throughout .inp
+// files (e.g. "c RESERVOIRS", "c ELEMENT PROPERTIES") but are NOT meant to be
+// attached to the element that happens to follow them. Matched case-insensitively
+// after collapsing internal whitespace.
+const GENERIC_SECTION_HEADERS = new Set([
+  'ELEMENT PROPERTIES',
+  'RESERVOIRS',
+  'RESERVOIR',
+  'SYSTEM CONNECTIVITY',
+  'SYSTEM',
+  'EXECUTION CONTROL',
+  'EXECUTION',
+  'OUTPUT REQUEST',
+  'OUTPUT',
+  'COMPUTATIONAL PARAMETERS',
+  'PARAMETERS',
+  'CONDUITS',
+  'CONDUIT',
+  'TURBINES',
+  'TURBINE',
+  'PUMPS',
+  'PUMP',
+  'VALVES',
+  'VALVE',
+  'ONEWAYS',
+  'ONEWAY',
+  'ONE-WAY VALVES',
+  'SURGE TANKS',
+  'SURGE TANK',
+  'SURGETANKS',
+  'SURGETNK',
+  'FLOW BOUNDARIES',
+  'FLOW BOUNDARY',
+  'FLOWBCS',
+  'FLOWBC',
+  'NODES',
+  'NODE',
+  'CONTROL',
+]);
+
+// A comment line that is purely decorative (rows of *, -, = used as dividers).
+function isDecorativeComment(text: string): boolean {
+  return /^[*\-=\s]+$/.test(text);
+}
+
+function isGenericSectionHeader(text: string): boolean {
+  if (isDecorativeComment(text)) return true;
+  const normalized = text.replace(/\s+/g, ' ').trim().toUpperCase();
+  return GENERIC_SECTION_HEADERS.has(normalized);
+}
+
 function extractComments(rawLines: string[]): {
   nodeComments: Map<string, string>;
   elementComments: Map<string, string>;
@@ -618,7 +669,10 @@ function extractComments(rawLines: string[]): {
     // Comment line — capture text after the leading "c"/"C"
     if (/^[cC](\s|$)/.test(line)) {
       const text = line.replace(/^[cC]\s*/, '').trim();
-      if (text) pendingComment = text;
+      // Generic section-header/divider comments are never attached to an
+      // element's actual comment field — skip them without disturbing any
+      // real pending comment that may already be set.
+      if (text && !isGenericSectionHeader(text)) pendingComment = text;
       continue;
     }
 

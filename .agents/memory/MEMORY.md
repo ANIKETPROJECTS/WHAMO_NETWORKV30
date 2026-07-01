@@ -1,2 +1,3 @@
 - [Excel multi-sheet export/import](excel-multisheet.md) — multi-sheet workbook added to excel-io.ts; `_addWorksheetToWb` is the shared helper; listSheetSuffix avoids _Lists name collisions.
 - [Help modal](help-modal.md) — HelpModal.tsx created; showHelp state already existed in Header.tsx; Help button placed after Arrange in title bar.
+- [INP parser comment extraction](inp-comment-extraction.md) — generic WHAMO section headers ("RESERVOIRS", "TURBINES", etc.) must be excluded from pendingComment, not attached to elements.
