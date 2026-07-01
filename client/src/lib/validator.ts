@@ -221,7 +221,10 @@ export function validateNetwork(nodes: WhamoNode[], edges: WhamoEdge[]): { error
 
     if (n.type === 'surgeTank') {
       if (connections.length !== 1) {
-        addError(n.id, `Surge Tank ${d.label} must connect to exactly one node.`, d.label, n.type);
+        const msg = connections.length === 0
+          ? `Surge Tank ${d.label} is not connected to the network.`
+          : `Surge Tank ${d.label} is connected inline (${connections.length} connections). A surge tank is a side-branch element — it must connect to exactly one junction/node. Add a Node or Junction where the surge tank branches off the main pipeline, then connect ${d.label} to that node only.`;
+        addError(n.id, msg, d.label, n.type);
       }
       if (d.tankTop === undefined || d.tankBottom === undefined || d.tankTop === '' || d.tankBottom === '') {
         addError(n.id, `Surge Tank ${d.label} missing required elevation parameters.`, d.label, n.type);
