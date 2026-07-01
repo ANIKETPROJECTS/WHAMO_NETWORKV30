@@ -197,21 +197,22 @@ function DesignerInner() {
 
   const buildProjectData = () => {
     const state = useNetworkStore.getState();
-    const profiles = buildPipeProfiles(edges as WhamoEdge[]);
+    const liveEdges = state.edges as WhamoEdge[];
+    const profiles = buildPipeProfiles(liveEdges);
     return {
-      projectName,
-      nodes,
-      edges: compactEdges(edges as WhamoEdge[], profiles),
+      projectName: state.projectName,
+      nodes: state.nodes,
+      edges: compactEdges(liveEdges, profiles),
       pipeProfiles: profiles,
-      computationalParams,
-      outputRequests,
-      pcharData,
+      computationalParams: state.computationalParams,
+      outputRequests: state.outputRequests,
+      pcharData: state.pcharData,
       tcharData: state.tcharData,
       vSchedules: state.vSchedules,
-      snapshotTimes,
-      hSchedules,
-      qSchedules,
-      nodeSelectionSet: Array.from(nodeSelectionSet),
+      snapshotTimes: state.snapshotTimes,
+      hSchedules: state.hSchedules,
+      qSchedules: state.qSchedules,
+      nodeSelectionSet: Array.from(state.nodeSelectionSet),
     };
   };
 
@@ -287,21 +288,22 @@ function DesignerInner() {
 
   const handleSaveAs = async () => {
     const state2 = useNetworkStore.getState();
-    const profiles = buildPipeProfiles(edges as WhamoEdge[]);
+    const liveEdges2 = state2.edges as WhamoEdge[];
+    const profiles = buildPipeProfiles(liveEdges2);
     const data = { 
-      projectName,
-      nodes, 
-      edges: compactEdges(edges as WhamoEdge[], profiles),
+      projectName: state2.projectName,
+      nodes: state2.nodes,
+      edges: compactEdges(liveEdges2, profiles),
       pipeProfiles: profiles,
-      computationalParams,
-      outputRequests,
-      pcharData,
+      computationalParams: state2.computationalParams,
+      outputRequests: state2.outputRequests,
+      pcharData: state2.pcharData,
       tcharData: state2.tcharData,
       vSchedules: state2.vSchedules,
-      snapshotTimes,
-      hSchedules,
-      qSchedules,
-      nodeSelectionSet: Array.from(nodeSelectionSet),
+      snapshotTimes: state2.snapshotTimes,
+      hSchedules: state2.hSchedules,
+      qSchedules: state2.qSchedules,
+      nodeSelectionSet: Array.from(state2.nodeSelectionSet),
     };
 
     const suggestedName = `${projectName.replace(/[^a-z0-9]/gi, '_').toLowerCase() || 'network'}.json`;
