@@ -1330,47 +1330,83 @@ export function parseInpFile(content: string): {
   };
 
   // ── Parse SCHEDULE blocks (HSCHEDULE and QSCHEDULE) ───────────────────────
+  // Supports both inline format: "QSCHEDULE 1 T 0 Q 5156 T 7 Q 468 ..."
+  // and multi-line format:
+  //   QSCHEDULE 1
+  //    T  0.0 Q 5156
+  //    T  7.0 Q 468.7
+  //   FINISH
   const hSchedules: { number: number; points: { time: number; head: number }[] }[] = [];
   const qSchedules: Record<number, { time: number; flow: number }[]> = {};
   {
     let inSchedule = false;
     let currentHSchedNum: number | null = null;
     let currentHPoints: { time: number; head: number }[] = [];
+    let currentQSchedNum: number | null = null;
+    let currentQPoints: { time: number; flow: number }[] = [];
+
+    const flushQSched = () => {
+      if (currentQSchedNum !== null && currentQPoints.length > 0) {
+        qSchedules[currentQSchedNum] = [...currentQPoints];
+      }
+      currentQSchedNum = null;
+      currentQPoints = [];
+    };
 
     for (const rl of rawLines) {
       const t = rl.trim();
       if (!t) continue;
       if (/^SCHEDULE\b/i.test(t)) {
+        flushQSched();
         inSchedule = true;
         // Also check for inline QSCHEDULE on the same line: "SCHEDULE QSCHEDULE 1 T 0 Q ..."
         const inlineQ = t.match(/\bQSCHEDULE\s+(\d+)\s+(.*)/i);
         if (inlineQ) {
           const num = parseInt(inlineQ[1]);
-          const pts: { time: number; flow: number }[] = [];
-          const tqPairs = [...inlineQ[2].matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
-          tqPairs.forEach(m => pts.push({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
-          if (pts.length > 0) qSchedules[num] = pts;
+          const rest = inlineQ[2];
+          const tqPairs = [...rest.matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+          if (tqPairs.length > 0) {
+            qSchedules[num] = tqPairs.map(m => ({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
+          } else {
+            currentQSchedNum = num;
+            currentQPoints = [];
+          }
         }
         currentHSchedNum = null; currentHPoints = [];
         continue;
       }
       if (!inSchedule) continue;
       if (/^FINISH\b/i.test(t)) {
+        flushQSched();
         if (currentHSchedNum !== null && currentHPoints.length > 0) {
           hSchedules.push({ number: currentHSchedNum, points: [...currentHPoints] });
         }
         inSchedule = false; currentHSchedNum = null; currentHPoints = [];
         continue;
       }
-      // QSCHEDULE line (inline format): QSCHEDULE <num> T <t> Q <q> T <t> Q <q> ...
-      const qschedM = t.match(/^QSCHEDULE\s+(\d+)\s+(.*)/i);
+      // QSCHEDULE header line (with or without inline T/Q pairs)
+      const qschedM = t.match(/^QSCHEDULE\s+(\d+)(.*)/i);
       if (qschedM) {
+        flushQSched();
         const num = parseInt(qschedM[1]);
-        const pts: { time: number; flow: number }[] = [];
-        const tqPairs = [...qschedM[2].matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
-        tqPairs.forEach(m => pts.push({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
-        if (pts.length > 0) qSchedules[num] = pts;
+        const rest = qschedM[2].trim();
+        const tqPairs = [...rest.matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+        if (tqPairs.length > 0) {
+          qSchedules[num] = tqPairs.map(m => ({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
+        } else {
+          // T/Q pairs are on subsequent lines — accumulate them
+          currentQSchedNum = num;
+          currentQPoints = [];
+        }
         continue;
+      }
+      // T/Q pair lines belonging to current QSCHEDULE block
+      if (currentQSchedNum !== null) {
+        const tqM = t.match(/^\s*T\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/i);
+        if (tqM) {
+          currentQPoints.push({ time: parseFloat(tqM[1]), flow: parseFloat(tqM[2]) });
+          continue;
+        }
       }
       // HSCHEDULE header line
       const hschedM = t.match(/\bHSCHEDULE\s+(\d+)/i);
@@ -1381,6 +1417,7 @@ export function parseInpFile(content: string): {
         if (thM) currentHPoints.push({ time: parseFloat(thM[1]), head: parseFloat(thM[2]) });
       }
     }
+    flushQSched(); // flush any trailing schedule not terminated by FINISH
   }
 
   const { nodes, edges, pcharData, tcharData, vSchedules } = buildReactFlowGraph(topo, elems, projectName, nodeComments, elementComments);
