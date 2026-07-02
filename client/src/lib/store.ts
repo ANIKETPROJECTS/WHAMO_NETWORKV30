@@ -165,7 +165,7 @@ interface NetworkState {
   updateEdgeData: (id: string, data: Partial<EdgeData>) => void;
   deleteElement: (id: string, type: 'node' | 'edge') => void;
   selectElement: (id: string | null, type: 'node' | 'edge' | null) => void;
-  loadNetwork: (nodes: WhamoNode[], edges: WhamoEdge[], params?: ComputationalParameters, requests?: OutputRequest[], projectName?: string, fileHandle?: FileSystemFileHandle, pcharData?: Record<number, PcharType>, snapshotTimes?: number[], nodeSelectionSet?: string[], tcharData?: Record<number, TcharType>, vSchedules?: Record<number, { t: number; g: number }[]>) => void;
+  loadNetwork: (nodes: WhamoNode[], edges: WhamoEdge[], params?: ComputationalParameters, requests?: OutputRequest[], projectName?: string, fileHandle?: FileSystemFileHandle, pcharData?: Record<number, PcharType>, snapshotTimes?: number[], nodeSelectionSet?: string[], tcharData?: Record<number, TcharType>, vSchedules?: Record<number, { t: number; g: number }[]>, unit?: UnitSystem) => void;
   clearNetwork: () => void;
   updatePcharData: (pumpType: number, data: PcharType) => void;
   updateTcharData: (turbineType: number, data: TcharType) => void;
@@ -1104,7 +1104,7 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     set({ selectedElementId: id, selectedElementType: type });
   },
 
-  loadNetwork: (nodes, edges, params, requests, projectName, fileHandle, pcharData, snapshotTimes, nodeSelectionSet, tcharData, vSchedules) => {
+  loadNetwork: (nodes, edges, params, requests, projectName, fileHandle, pcharData, snapshotTimes, nodeSelectionSet, tcharData, vSchedules, unit?) => {
     const maxId = Math.max(
       ...nodes.map(n => parseInt(n.id) || 0),
       ...edges.map(e => parseInt(e.id) || 0),
@@ -1196,7 +1196,8 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
       vSchedules: vSchedules || {},
       nodeSelectionSet: Array.isArray(nodeSelectionSet) ? new Set(nodeSelectionSet) : new Set(),
       selectedElementId: null, 
-      selectedElementType: null 
+      selectedElementType: null,
+      ...(unit ? { globalUnit: unit } : {}),
     });
     get().recomputeNodeOrderErrors();
   },

@@ -1507,5 +1507,22 @@ export function parseInpFile(content: string): {
   // setAllNodesSelected — because RF IDs are non-contiguous (edges share the ID counter).
   const nodeSelectionSet = nodes.map(n => n.data?.nodeNumber?.toString() ?? n.id);
 
-  return { nodes, edges, projectName, computationalParams, hSchedules, qSchedules, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet };
+  // ── Parse FLUID block to detect unit system ────────────────────────────────
+  // FLUID / METRIC or IMPERIAL / FINISH declares the unit system of the file.
+  // Default to 'FPS' if no FLUID block is present.
+  let parsedUnit: 'SI' | 'FPS' = 'FPS';
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!/^FLUID\b/i.test(t)) continue;
+    for (let j = i + 1; j < lines.length; j++) {
+      const ft = lines[j].trim();
+      if (!ft) continue;
+      if (/^FINISH\b/i.test(ft)) break;
+      if (/^METRIC\b/i.test(ft)) { parsedUnit = 'SI'; break; }
+      if (/^IMPERIAL\b/i.test(ft)) { parsedUnit = 'FPS'; break; }
+    }
+    break;
+  }
+
+  return { nodes, edges, projectName, computationalParams, hSchedules, qSchedules, pcharData, tcharData, vSchedules, outputRequests, nodeSelectionSet, unit: parsedUnit };
 }

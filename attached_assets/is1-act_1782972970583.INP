@@ -1,0 +1,473 @@
+c *************************************************************************
+c TEESTA-VI -DOWNSTREAM WATERWAY(n=0.012) Q=146.03 CUMEC ORIFICE 6.9 SQM 
+c GS 6.9 SQM AND CONSTRUCTION ADIT AS SURGE GALLERY OF 7M D-SHAPE & 7.5M D-SHAPE
+C CONSIDERING ALL UNITS
+C    SYSTEM CONNECTIVITY
+SYSTEM
+    ELEM FB4 AT 1
+    ELEM FB3 AT 11
+    ELEM FB2 AT 21
+    ELEM FB1 AT 31
+    ELEM C1 LINK 1 2
+    ELEM C2 LINK 2 3
+    ELEM C3 LINK 3 4
+    JUNCTION AT 4
+    ELEM O1 LINK 4 6
+    ELEM C4 LINK 4 5
+    JUNCTION AT 5    
+    ELEM O2 LINK 5 7
+    ELEM C5 LINK 5 8
+    ELEM ST4 AT 6
+    ELEM ST5 AT 7
+    ELEM TW AT 8
+    ELEM C1 LINK 11 12
+    ELEM C2 LINK 12 13
+    ELEM C3 LINK 13 14
+    JUNCTION AT 14
+    ELEM O1 LINK 14 16
+    ELEM C4 LINK 14 15
+    JUNCTION AT 15    
+    ELEM C8 LINK 15 17
+    ELEM C7 LINK 15 5
+    ELEM ST3 AT 16
+    ELEM TW AT 17
+    ELEM C1 LINK 21 22
+    ELEM C2 LINK 22 23
+    ELEM C3 LINK 23 24
+    JUNCTION AT 24
+    ELEM O1 LINK 24 26
+    ELEM C4 LINK 24 25
+    JUNCTION AT 25    
+    ELEM C9 LINK 25 27
+    ELEM C6 LINK 25 15
+    ELEM ST2 AT 26
+    ELEM TW AT 27
+    ELEM C1 LINK 31 32
+    ELEM C2 LINK 32 33
+    ELEM C3 LINK 33 34
+    JUNCTION AT 34
+    ELEM O1 LINK 34 36
+    ELEM C4 LINK 34 35
+    JUNCTION AT 35    
+    ELEM C10 LINK 35 37
+    ELEM C7 LINK 35 25
+    ELEM ST1 AT 36
+    ELEM TW AT 37    
+    NODE 1 ELEV 235.0                                                        
+    NODE 2 ELEV 225.3                                                      
+    NODE 3 ELEV 230.2                                                     
+    NODE 4 ELEV 232.0
+    NODE 5 ELEV 232.3                                                         
+    NODE 8 ELEV 242.5
+    NODE 11 ELEV 235.0                                                        
+    NODE 12 ELEV 225.3                                                      
+    NODE 13 ELEV 230.2                                                     
+    NODE 14 ELEV 232.0
+    NODE 15 ELEV 232.3                                                         
+    NODE 17 ELEV 242.5
+    NODE 21 ELEV 235.0                                                        
+    NODE 22 ELEV 225.3                                                      
+    NODE 23 ELEV 230.2                                                     
+    NODE 24 ELEV 232.0
+    NODE 25 ELEV 232.3                                                         
+    NODE 27 ELEV 242.5
+    NODE 31 ELEV 235.0                                                        
+    NODE 32 ELEV 225.3                                                      
+    NODE 33 ELEV 230.2                                                     
+    NODE 34 ELEV 232.0
+    NODE 35 ELEV 232.3                                                         
+    NODE 37 ELEV 242.5 
+ FINISH
+
+c *************************************************************************
+C    ELEMENT PROPERTIES
+
+  CONDUIT  
+   ID C1                                                                          
+   VARIABLE                                                                       
+   DISTANCE 0.0                                                                   
+   AREA 13.1                                                                  
+   D 11.0                                                                      
+   A 45.0                                                                   
+   LENGTH 11.0                                                             
+   CELERITY 1000                                                                 
+   FRICTION 0.0069                                                       
+   NUMSEG 1                                                                       
+  FINISH                                                                          
+                                                                                  
+  CONDUIT                                                                         
+   ID C2                                                                          
+   VARIABLE                                                                       
+   DISTANCE 0.0                                                                   
+   AREA 45.0                                                                  
+   D 15.0                                                                        
+   A 56.0                                                                  
+   LENGTH 15.0                                                                  
+   CELERITY 1000                                                                 
+   FRICTION 0.0075                                                         
+   NUMSEG 1                                                                       
+  FINISH             
+
+ CONDUIT
+  ID C3
+  LENGTH 45.0
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+  ADDEDLOSS
+     CPLUS 0
+     CMINUS 0
+  NUMSEG 1
+ FINISH
+
+  SURGETANK                                                                       
+   ID ST1                                                                          
+   ELBOTTOM 230                                                             
+   ELTOP 255                                                                   
+   SHAPE                                                                          
+   E 230                                                                
+   A 6.9                                                                    
+   E 255                                                        
+   A 6.9                                                                         
+   CELERITY 1000                                                                 
+   FRICTION 0.0125                                                             
+  FINISH  
+ 
+
+SURGETANK                                                                       
+   ID ST2                                                                          
+   ELBOTTOM 230                                                             
+   ELTOP 255                                                                   
+   SHAPE                                                                          
+   E 230                                                                
+   A 6.9                                                                    
+   E 255                                                        
+   A 6.9                                                                         
+   CELERITY 1000                                                                 
+   FRICTION 0.0125                                                             
+  FINISH  
+
+SURGETANK                                                                       
+   ID ST3                                                                          
+   ELBOTTOM 230                                                             
+   ELTOP 255                                                                   
+   SHAPE                                                                          
+   E 230                                                                
+   A 6.9                                                                    
+   E 255                                                        
+   A 6.9                                                                         
+   CELERITY 1000                                                                 
+   FRICTION 0.0125                                                             
+  FINISH  
+
+SURGETANK                                                                       
+   ID ST4                                                                          
+   ELBOTTOM 230                                                             
+   ELTOP 255                                                                   
+   SHAPE                                                                          
+   E 230                                                                
+   A 6.9                                                                    
+   E 255                                                        
+   A 6.9                                                                         
+   CELERITY 1000                                                                 
+   FRICTION 0.0125                                                             
+  FINISH  
+                                                                                   
+CONDUIT                                                                         
+   ID O1                                                                          
+   LENGTH 2.0                                                                      
+   DIAM 2.48                                                    
+   CELERITY 900                                                                                                                                 
+   ADDEDLOSS                                                                      
+       CPLUS 0.44                                                          
+       CMINUS 0.77                                                       
+   NUMSEG 1                                                                       
+  FINISH 
+
+
+ CONDUIT                                                                         
+   ID O2                                                                          
+   LENGTH 2.0                                                                      
+   DIAM 6.22                                                    
+   CELERITY 1000                                                                                                                                 
+   ADDEDLOSS                                                                      
+       CPLUS 0.11                                                          
+       CMINUS 0.05                                                       
+   NUMSEG 1                                                                       
+  FINISH
+
+CONDUIT
+  ID C4
+  LENGTH 12.0
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+   ADDEDLOSS 
+     CPLUS 0.1
+     CMINUS 0.1
+  NUMSEG 1
+ FINISH
+
+ CONDUIT
+  ID C5
+  LENGTH 223.6
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+   ADDEDLOSS 
+     CPLUS 1.1
+     CMINUS 1.1
+  NUMSEG 1
+ FINISH
+
+CONDUIT
+  ID C6
+  LENGTH 30
+  DIAM 6.22
+  CELERITY 1000
+  FRICTION 0.0077
+   ADDEDLOSS 
+     CPLUS 0.1
+     CMINUS 0.1
+  NUMSEG 1
+ FINISH
+
+CONDUIT
+  ID C7
+  LENGTH 23
+  DIAM 6.22
+  CELERITY 1000
+  FRICTION 0.0077
+   ADDEDLOSS 
+     CPLUS 0.1
+     CMINUS 0.1
+  NUMSEG 1
+ FINISH
+
+ CONDUIT
+  ID C8
+  LENGTH 195.3
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+   ADDEDLOSS 
+     CPLUS 1.1
+     CMINUS 1.1
+  NUMSEG 1
+ FINISH
+
+ CONDUIT
+  ID C9
+  LENGTH 166.3
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+   ADDEDLOSS 
+     CPLUS 1.1
+     CMINUS 1.1
+  NUMSEG 1
+ FINISH
+
+ CONDUIT
+  ID C10
+  LENGTH 134
+  DIAM 7.04
+  CELERITY 1000
+  FRICTION 0.0073
+   ADDEDLOSS 
+     CPLUS 1.1
+     CMINUS 1.1
+  NUMSEG 1
+ FINISH
+
+ SURGETANK                                                                       
+   ID ST5                                                                          
+   ELBOTTOM 224.8                                                             
+   ELTOP 250                                                                   
+   SHAPE                                                                          
+   E 224.8                                                                
+   A 0.5                                                                   
+   E 225.8                                                        
+   A 148.0
+   E 226.8
+   A 296.1
+   E 227.8
+   A 444.1
+   E 228.8
+   A 592.0
+   E 229.8
+   A 733.3
+   E 230.8
+   A 853.8
+   E 231.8
+   A 924.3
+   E 233.15
+   A 924.3
+   E 234.15
+   A 882.4
+   E 235.15
+   A 839.5
+   E 236.15
+   A 796.8
+   E 237.15
+   A 754.3
+   E 238.15
+   A 715.8
+   E 239.15
+   A 687.5
+   E 240.15
+   A 687.0
+   E 240.65
+   A 704.8
+   E 250.0
+   A 704.8                                                                     
+   CELERITY 1000                                                                 
+   FRICTION 0.009                                                             
+  FINISH  
+
+ 
+
+FLOWBC
+ ID FB1
+ QSCHEDULE 1
+FINISH
+
+FLOWBC
+ ID FB2
+ QSCHEDULE 2
+FINISH
+      
+
+FLOWBC
+ ID FB3
+ QSCHEDULE 3
+FINISH
+
+FLOWBC
+ ID FB4
+ QSCHEDULE 4
+FINISH
+
+  
+RESERVOIR
+ ID TW
+ HSCHEDULE 1
+FINISH
+                                                     
+C *************************************************************************   
+C  VALVE OR TURBINE CHARACTERISTICS  
+                                       
+C  VALVE OR TURBINE CHARACTERISTICS  
+                                       
+SCHEDULE
+  QSCHEDULE 1
+   T    0.0 Q   0.01
+   T   10.0 Q   13.27
+   T   40.0 Q   13.27
+   T   80.0 Q   146.03
+   T 9999.0 Q   146.03
+FINISH                      
+
+SCHEDULE
+  QSCHEDULE 2
+   T    0.0 Q   0.01
+   T  410.0 Q   0.01
+   T  420.0 Q   13.27
+   T  450.0 Q   13.27
+   T  490.0 Q   146.03
+   T 9999.0 Q   146.03
+FINISH                 
+
+C  VALVE OR TURBINE CHARACTERISTICS  
+                                       
+SCHEDULE
+  QSCHEDULE 3
+   T    0.0 Q   0.01
+   T   10.0 Q   13.27
+   T   40.0 Q   13.27
+   T   80.0 Q   146.03
+   T 9999.0 Q   146.03
+FINISH                      
+
+SCHEDULE
+  QSCHEDULE 4
+   T    0.0 Q   0.01
+   T  410.0 Q   0.01
+   T  420.0 Q   13.27
+   T  450.0 Q   13.27
+   T  490.0 Q   146.03
+   T 9999.0 Q   146.03
+FINISH              
+
+
+
+
+C **SCHEDULE ADJUSTED AS PER OUTFLOW*****************************************************************
+ SCHEDULE
+  HSCHEDULE 1
+   T    0.0  H   246.0
+   T 9000.0  H   246.0
+ FINISH            
+
+C *************************************************************************                                                                                  
+
+C    OUTPUT REQUESTS
+ HISTORY
+  NODE 1 Q HEAD PIEZHEAD
+  NODE 2 Q HEAD PIEZHEAD
+  NODE 3 Q HEAD PIEZHEAD
+  NODE 4 Q HEAD PIEZHEAD
+  NODE 5 Q HEAD PIEZHEAD
+  NODE 7 Q HEAD PIEZHEAD
+  NODE 8 Q HEAD PIEZHEAD
+  NODE 14 Q HEAD PIEZHEAD
+  NODE 24 Q HEAD PIEZHEAD
+  NODE 34 Q HEAD PIEZHEAD
+  ELEM ST1 Q ELEV
+  ELEM ST2 Q ELEV
+  ELEM ST3 Q ELEV
+  ELEM ST4 Q ELEV
+  ELEM ST5 Q ELEV
+  FINISH
+
+ PLOT
+  NODE 1 Q HEAD
+  NODE 2 Q HEAD
+  NODE 3 Q HEAD
+  NODE 4 Q HEAD
+  NODE 5 Q HEAD
+  NODE 7 Q HEAD
+  NODE 14 Q HEAD
+  NODE 24 Q HEAD
+  NODE 34 Q HEAD
+  ELEM ST1 Q ELEV
+  ELEM ST2 Q ELEV
+  ELEM ST3 Q ELEV
+  ELEM ST4 Q ELEV
+  ELEM ST5 Q ELEV
+ FINISH
+
+
+ DISPLAY
+  ALL
+ FINISH
+
+ FLUID
+  METRIC
+ FINISH
+                                    
+
+c *************************************************************************
+C    COMPUTATIONAL PARAMETERS
+
+CONTROL
+ DTCOMP 0.02
+ DTOUT 0.1
+ TMAX 1000.0
+FINISH
+
+c *************************************************************************
+C    EXECUTION CONTROL
+
+GO
+GOODBYE

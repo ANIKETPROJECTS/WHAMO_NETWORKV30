@@ -416,6 +416,7 @@ export function Header({
       parsed.nodeSelectionSet,
       parsed.tcharData,
       parsed.vSchedules,
+      parsed.unit,
     );
     // Auto-arrange immediately after loading — store is synchronous so positions
     // are available in the same tick.
