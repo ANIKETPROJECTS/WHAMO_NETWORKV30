@@ -2,6 +2,7 @@ import { WhamoNode, WhamoEdge, PcharType, TcharType } from './store';
 
 interface ParsedTopology {
   elemLinks: Map<string, { from: string; to: string; type: 'link' }>;
+  allElemLinks: { id: string; from: string; to: string }[];
   elemAt: Map<string, string>;
   junctions: Set<string>;
   nodeElevations: Map<string, number>;
@@ -57,6 +58,7 @@ function joinContinuationLines(lines: string[]): string[] {
 
 function parseSystemSection(lines: string[]): ParsedTopology {
   const elemLinks = new Map<string, { from: string; to: string; type: 'link' }>();
+  const allElemLinks: { id: string; from: string; to: string }[] = [];
   const elemAt = new Map<string, string>();
   const junctions = new Set<string>();
   const nodeElevations = new Map<string, number>();
@@ -72,9 +74,12 @@ function parseSystemSection(lines: string[]): ParsedTopology {
     const elemLinkMatch = line.match(/^ELEM\s+(\S+)\s+LINK\s+(\S+)\s+(\S+)/i);
     if (elemLinkMatch) {
       const [, id, from, to] = elemLinkMatch;
+      // Keep first occurrence in elemLinks for property lookup
       if (!elemLinks.has(id)) {
         elemLinks.set(id, { from, to, type: 'link' });
       }
+      // Track ALL occurrences so every segment gets an edge
+      allElemLinks.push({ id, from, to });
       continue;
     }
 
@@ -98,7 +103,7 @@ function parseSystemSection(lines: string[]): ParsedTopology {
     }
   }
 
-  return { elemLinks, elemAt, junctions, nodeElevations };
+  return { elemLinks, allElemLinks, elemAt, junctions, nodeElevations };
 }
 
 function parseFloat2(s: string | undefined): number {
@@ -721,7 +726,7 @@ function buildReactFlowGraph(
   nodeComments: Map<string, string> = new Map(),
   elementComments: Map<string, string> = new Map()
 ): { nodes: WhamoNode[]; edges: WhamoEdge[]; pcharData: Record<number, PcharType>; tcharData: Record<number, TcharType>; vSchedules: Record<number, { t: number; g: number }[]> } {
-  const { elemLinks, elemAt, junctions, nodeElevations } = topo;
+  const { elemLinks, allElemLinks, elemAt, junctions, nodeElevations } = topo;
   const { reservoirs, conduits, pumps, turbines, oneway, oppumps, opturbs, surgeTanks, flowBCs } = elems;
 
   let rfIdCounter = 1;
@@ -734,7 +739,8 @@ function buildReactFlowGraph(
   const posMap = new Map<string, { x: number; y: number }>();
 
   const allWhamoNodeIds = new Set<string>();
-  elemLinks.forEach(({ from, to }) => { allWhamoNodeIds.add(from); allWhamoNodeIds.add(to); });
+  // Use allElemLinks so every link segment (including reused element IDs like C1) contributes its nodes
+  allElemLinks.forEach(({ from, to }) => { allWhamoNodeIds.add(from); allWhamoNodeIds.add(to); });
   elemAt.forEach((nodeId) => allWhamoNodeIds.add(nodeId));
   nodeElevations.forEach((_, nodeId) => allWhamoNodeIds.add(nodeId));
 
@@ -742,7 +748,8 @@ function buildReactFlowGraph(
   const inDegree = new Map<string, number>();
   allWhamoNodeIds.forEach(id => { adjacency.set(id, []); inDegree.set(id, 0); });
 
-  elemLinks.forEach(({ from, to }) => {
+  // Build full adjacency from ALL link occurrences
+  allElemLinks.forEach(({ from, to }) => {
     adjacency.get(from)?.push(to);
     inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
   });
@@ -1074,8 +1081,8 @@ function buildReactFlowGraph(
     });
   });
 
-  elemLinks.forEach((link, elemId) => {
-    const { from, to } = link;
+  // Iterate ALL link occurrences so every segment (e.g. C1 reused 7 times) creates an edge
+  allElemLinks.forEach(({ id: elemId, from, to }) => {
 
     // Pumps, turbines, and check valves that use LINK are EDGE elements —
     // they render as a circular icon on the connection line (like a labelled
