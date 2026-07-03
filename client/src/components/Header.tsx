@@ -306,13 +306,6 @@ export function Header({
     }
   }, [pendingGenerateMode]);
 
-  // Keep Designer's ValidationModal able to trigger a direct .OUT generation
-  // (bypassing the Output Requests dialog) for Force Generate / Generate Anyway.
-  useEffect(() => {
-    onRegisterForceGenerateOut?.(() => handleGenerateOutDirectly(projectName));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onRegisterForceGenerateOut, projectName, nodes, edges]);
-
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -609,6 +602,13 @@ export function Header({
       });
     }
   };
+
+  // Keep Designer's ValidationModal able to trigger a direct .OUT generation
+  // (bypassing the Output Requests dialog) for Force Generate / Generate Anyway.
+  useEffect(() => {
+    onRegisterForceGenerateOut?.(() => handleGenerateOutDirectly(projectName));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRegisterForceGenerateOut, projectName, nodes, edges]);
 
   const handleExport = () => {
     if (!projectName.trim() || projectName === "Untitled Network") {
