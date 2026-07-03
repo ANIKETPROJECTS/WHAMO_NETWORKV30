@@ -1575,26 +1575,79 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     const levelRemap   = new Map<number, number>();
     sortedLevels.forEach((lvl, idx) => levelRemap.set(lvl, idx));
 
-    // ── STEP 5: Barycenter heuristic (3 passes) to minimise edge crossings ─────
-    const tempY = new Map<string, number>();
-    nodes.forEach(n => tempY.set(n.id, n.position.y));
+    // ── STEP 5: Order nodes within each level to minimise edge crossings ───────
+    // Two-phase approach (standard Sugiyama-style layered layout):
+    //  1) Seed the order via a BFS traversal from the seeds. This visits each
+    //     parent's children consecutively, so sibling subtrees start out
+    //     grouped together and naturally non-crossing (unlike sorting each
+    //     level independently by a raw average, which can flip the order of
+    //     parallel branches between adjacent levels and create an "hourglass"
+    //     crossing even when the original topology has none).
+    //  2) Refine with alternating down/up median-heuristic sweeps, each pass
+    //     using only the already-fixed order of the *previous* level (not a
+    //     simultaneous parents+children average), so passes can't contradict
+    //     each other and converge without re-introducing crossings.
+    const order = new Map<number, string[]>();
+    sortedLevels.forEach(lvl => order.set(lvl, []));
 
-    for (let pass = 0; pass < 3; pass++) {
-      levelGroups.forEach((ids, _lvl) => {
-        const sorted = [...ids].sort((a, b) => {
-          const score = (id: string) => {
-            const parents  = dagIn.get(id)  ?? [];
-            const children = dagOut.get(id) ?? [];
-            const all      = [...parents, ...children];
-            if (all.length === 0) return tempY.get(id) ?? 0;
-            return all.reduce((s, nb) => s + (tempY.get(nb) ?? 0), 0) / all.length;
-          };
-          return score(a) - score(b);
-        });
-        sorted.forEach((id, idx) => tempY.set(id, idx * V_GAP));
-        levelGroups.set(_lvl, sorted);
-      });
+    const orderVisited = new Set<string>();
+    const seedTraversal: string[] = [...seeds];
+    while (seedTraversal.length > 0) {
+      const id = seedTraversal.shift()!;
+      if (orderVisited.has(id)) continue;
+      orderVisited.add(id);
+      const lvl = levelMap.get(id) ?? 0;
+      order.get(lvl)!.push(id);
+      for (const nb of dagOut.get(id) ?? []) {
+        if (!orderVisited.has(nb)) seedTraversal.push(nb);
+      }
     }
+    // Any nodes not reached (e.g. isolated cycles) — append in existing group order
+    levelGroups.forEach((ids, lvl) => {
+      ids.forEach(id => {
+        if (!orderVisited.has(id)) {
+          orderVisited.add(id);
+          order.get(lvl)!.push(id);
+        }
+      });
+    });
+
+    const posIndex = new Map<string, number>();
+    const syncPosIndex = () => {
+      order.forEach(ids => ids.forEach((id, idx) => posIndex.set(id, idx)));
+    };
+    syncPosIndex();
+
+    const median = (vals: number[]): number => {
+      if (vals.length === 0) return -1;
+      const s = [...vals].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 === 1 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+
+    const sweep = (neighborsOf: Map<string, string[]>, forward: boolean) => {
+      const levels = forward ? sortedLevels : [...sortedLevels].reverse();
+      for (const lvl of levels) {
+        const ids = order.get(lvl)!;
+        const scored = ids.map(id => {
+          const idxs = (neighborsOf.get(id) ?? [])
+            .map(nb => posIndex.get(nb))
+            .filter((v): v is number => v !== undefined);
+          const med = median(idxs);
+          return { id, key: med < 0 ? (posIndex.get(id) ?? 0) : med };
+        });
+        scored.sort((a, b) => a.key - b.key);
+        order.set(lvl, scored.map(s => s.id));
+        syncPosIndex();
+      }
+    };
+
+    for (let iter = 0; iter < 4; iter++) {
+      sweep(dagIn, true);   // top-down pass: order by parents' fixed positions
+      sweep(dagOut, false); // bottom-up pass: order by children's fixed positions
+    }
+
+    sortedLevels.forEach(lvl => levelGroups.set(lvl, order.get(lvl)!));
 
     // ── STEP 6: Subtree-aware node positions ──────────────────────────────────
     // Compute the "leaf span" of each node — the number of leaves reachable
