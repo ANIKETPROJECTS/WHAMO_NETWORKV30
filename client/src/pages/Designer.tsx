@@ -125,6 +125,7 @@ function DesignerInner() {
     onConnect: storeOnConnect, 
     selectElement, 
     loadNetwork,
+    autoArrange,
     clearNetwork,
     deleteElement,
     selectedElementId,
@@ -628,6 +629,7 @@ function DesignerInner() {
             loadNetwork(json.nodes, expandedEdges, { ...json.computationalParams, qSchedules: json.qSchedules, hSchedules: json.hSchedules }, json.outputRequests, loadedProjectName, undefined, json.pcharData, json.snapshotTimes, json.nodeSelectionSet, json.tcharData, json.vSchedules);
             setProjectState("active");
             setServerProjectId(null);
+            setTimeout(() => autoArrange(), 0);
             toast({ title: "Project Loaded", description: `Network topology "${loadedProjectName}" restored from JSON.` });
           } else {
             throw new Error("Invalid JSON format");
@@ -760,6 +762,7 @@ function DesignerInner() {
     setProjectState("active");
     setServerProjectId(project.id);
     setShowProjectsList(false);
+    setTimeout(() => autoArrange(), 0);
     toast({ title: "Project Loaded", description: `"${loadedProjectName}" opened from your account.` });
   };
 
