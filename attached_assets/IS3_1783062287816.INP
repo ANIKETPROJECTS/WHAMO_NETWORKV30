@@ -1,0 +1,334 @@
+KIRTHAI(STAGE-II)H.E.PROJECT-UPSTREAM WCS-800MW (Aug-2024)
+c *************************************************************************
+C Main Plant-4*200MW=800MW-22.5 m Dia of two Surge Shafts 
+C IS3 CASE-110-10-110 Loading (430.8 cumec)
+C    SYSTEM CONNECTIVITY
+SYSTEM
+    ELEM HW AT 1
+    ELEM HW AT 21
+    ELEM HW AT 31
+    ELEM C1 LINK 1 2
+    ELEM C2 LINK 2 3
+    ELEM C1 LINK 21 22
+    ELEM C2 LINK 22 3
+    ELEM C1 LINK 31 32
+    ELEM C2 LINK 32 3   
+    JUNCTION AT 3
+    ELEM C3 LINK 3 4
+    ELEM C3 LINK 4 5
+    ELEM C3 LINK 5 6
+    ELEM C3 LINK 6 7
+    ELEM C3 LINK 7 8
+    JUNCTION AT 8
+    ELEM C4A LINK 8 9
+    JUNCTION AT 9
+    ELEM O1 LINK 9 100
+    ELEM ST1 AT 100
+    ELEM C5A LINK 9 10
+    ELEM C6 LINK 10 11
+    ELEM C7 LINK 11 12
+    JUNCTION AT 12
+    ELEM C8 LINK 12 13
+    ELEM C8 LINK 12 14
+    ELEM C4B LINK 8 15
+    JUNCTION AT 15
+    ELEM C5B LINK 15 16
+    ELEM O1 LINK 15 200
+    ELEM ST2 AT 200
+    ELEM C6 LINK 16 17
+    ELEM C7 LINK 17 18
+    JUNCTION AT 18
+    ELEM C8 LINK 18 19
+    ELEM C8 LINK 18 20  
+    ELEM FB1 AT 13
+    ELEM FB2 AT 14
+    ELEM FB3 AT 19
+    ELEM FB4 AT 20   
+    NODE 1 ELEV 5719.0
+    NODE 2 ELEV 5719.0
+    NODE 3 ELEV 5719.0
+    NODE 21 ELEV 5719.0
+    NODE 31 ELEV 5719.0
+    NODE 8 ELEV 5628.5
+    NODE 11 ELEV 5101.7
+    NODE 17 ELEV 5098.3
+    NODE 12 ELEV 5627.7
+    NODE 18 ELEV 5627.7
+    NODE 13 ELEV 4992.5
+    NODE 14 ELEV 4992.5
+    NODE 19 ELEV 4992.5
+    NODE 20 ELEV 4992.5  
+   FINISH
+
+c *************************************************************************
+C    ELEMENT PROPERTIES
+
+RESERVOIR 
+ ID HW 
+ ELEV 5744.4
+FINISH
+ 
+CONDUIT
+ ID C1
+ LENGTH 984.0
+ DIAM 21.91
+ CELERITY 4300
+ FRICTION 0.0095
+ ADDEDLOSS
+     CPLUS 0.30
+     CMINUS 0.30
+ NUMSEG 2
+FINISH
+
+CONDUIT
+ ID C2
+ VARIABLE
+ DISTANCE 0.0
+ AREA 377
+ D 121.4
+ A 1079.6
+ LENGTH 121.4
+ CELERITY 4300
+ FRICTION 0.0085
+ ADDEDLOSS
+     CPLUS 0.20
+     CMINUS 0.20
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C3
+ LENGTH 3534.5
+ DIAM 37.07
+ CELERITY 4300
+ FRICTION 0.0080
+ ADDEDLOSS
+     CPLUS 0.30
+     CMINUS 0.30
+ NUMSEG 2
+FINISH
+
+CONDUIT
+ ID C4A
+ LENGTH 180.4
+ DIAM 26.96
+ CELERITY 4300
+ FRICTION 0.0089
+ ADDEDLOSS
+     CPLUS 0.10
+     CMINUS 0.10
+ NUMSEG 2
+FINISH
+
+CONDUIT
+ ID C4B
+ LENGTH 1351.4
+ DIAM 26.96
+ CELERITY 4300
+ FRICTION 0.0089
+ ADDEDLOSS
+     CPLUS 0.10
+     CMINUS 0.10
+ NUMSEG 2
+FINISH
+
+
+CONDUIT
+ ID C5A
+ LENGTH 426.4
+ DIAM 21.64
+ CELERITY 4500
+ FRICTION 0.0066
+ ADDEDLOSS
+     CPLUS 0.4
+     CMINUS 0.4
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C5B
+ LENGTH 295.2
+ DIAM 21.64
+ CELERITY 4500
+ FRICTION 0.0066
+ ADDEDLOSS
+     CPLUS 0.4
+     CMINUS 0.4
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C6
+ LENGTH 567.0
+ DIAM 21.64
+ CELERITY 4500
+ FRICTION 0.0066
+ ADDEDLOSS
+     CPLUS 0.1
+     CMINUS 0.1
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C7
+ LENGTH 148.3
+ DIAM 21.64
+ CELERITY 4500
+ FRICTION 0.0066
+ ADDEDLOSS
+     CPLUS 0.1
+     CMINUS 0.1
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C8
+ LENGTH 231.4
+ DIAM 14.76
+ CELERITY 4500
+ FRICTION 0.0075
+ ADDEDLOSS
+     CPLUS 0.2
+     CMINUS 0.2
+ NUMSEG 1
+FINISH
+
+
+CONDUIT
+ ID O1 
+ LENGTH 6.56
+ CELERITY 4500
+ DIAM 17.16
+ ADDEDLOSS
+   CPLUS 1.82
+   CMINUS 1.52
+FINISH
+
+SURGETANK
+ ID ST1 
+ ELBOTTOM 5628.5
+ ELTOP 5904.0
+ SHAPE
+   E  5628.5
+   A  4275.0
+   E  5904.0        
+   A  4275.0
+ CELERITY 4300
+ FRICTION 0.0064
+FINISH
+
+SURGETANK
+ ID ST2 
+ ELBOTTOM 5628.5
+ ELTOP 5904.0
+ SHAPE
+   E  5628.5
+   A  4275.0
+   E  5904.0        
+   A  4275.0
+ CELERITY 4300
+ FRICTION 0.0064
+FINISH
+
+FLOWBC
+ ID FB1
+ QSCHEDULE 1
+FINISH
+
+FLOWBC
+ ID FB2
+ QSCHEDULE 2
+FINISH
+
+FLOWBC
+ ID FB3
+ QSCHEDULE 3
+FINISH
+
+FLOWBC
+ ID FB4
+ QSCHEDULE 4
+FINISH
+
+c *************************************************************************
+C    VALVE or TURBINE CHARACTERISTICS
+
+SCHEDULE
+ QSCHEDULE 1
+   T    0.0 Q  4183.2
+   T    8.0 Q  380.3
+   T  218.9 Q  380.3
+   T  257.9 Q  4183.2
+   T 9999.0 Q  4183.2
+ FINISH
+
+SCHEDULE
+ QSCHEDULE 2
+   T    0.0 Q  4183.2
+   T    8.0 Q  380.3
+   T  312.0 Q  380.3
+   T  351.0 Q  4183.2
+   T 9999.0 Q  4183.2
+ FINISH 
+ 
+SCHEDULE
+  QSCHEDULE 3
+   T    0.0 Q  4183.2
+   T    8.0 Q  380.3
+   T  425.0 Q  380.3
+   T  464.0 Q  4183.2
+   T 9999.0 Q  4183.2
+ FINISH
+
+SCHEDULE
+ QSCHEDULE 4
+   T    0.0 Q  4183.2
+   T    8.0 Q  380.3
+   T  538.0 Q  380.3
+   T  577.0 Q  4183.2
+   T 9999.0 Q  4183.2
+ FINISH 
+
+c *************************************************************************
+C    OUTPUT REQUESTS
+
+    HISTORY                                                                        
+    NODE 1 HEAD         
+    NODE 3 Q HEAD 
+    NODE 13 Q HEAD
+    NODE 14 Q HEAD
+    NODE 19 Q HEAD
+    NODE 20 Q HEAD
+    ELEM ST1 Q ELEV
+    ELEM ST2 Q ELEV                                              
+    FINISH                                                                         
+                                                                                  
+    SPREADSHEET                                                                          
+    NODE 1 HEAD         
+    NODE 3 Q HEAD 
+    NODE 13 Q HEAD
+    NODE 14 Q HEAD
+    NODE 19 Q HEAD
+    NODE 20 Q HEAD
+    ELEM ST1 Q ELEV
+    ELEM ST2 Q ELEV                                                                   
+    FINISH
+
+ DISPLAY
+  ALL
+ FINISH
+
+c *************************************************************************
+C    COMPUTATIONAL PARAMETERS
+
+CONTROL
+ DTCOMP 0.1
+ DTOUT 0.25
+ TMAX 1000.0
+FINISH
+
+c *************************************************************************
+C    EXECUTION CONTROL
+
+GO
+GOODBYE
