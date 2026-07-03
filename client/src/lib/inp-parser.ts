@@ -4,6 +4,7 @@ interface ParsedTopology {
   elemLinks: Map<string, { from: string; to: string; type: 'link' }>;
   allElemLinks: { id: string; from: string; to: string }[];
   elemAt: Map<string, string>;
+  allElemAt: { id: string; nodeId: string }[];
   junctions: Set<string>;
   nodeElevations: Map<string, number>;
 }
@@ -60,6 +61,7 @@ function parseSystemSection(lines: string[]): ParsedTopology {
   const elemLinks = new Map<string, { from: string; to: string; type: 'link' }>();
   const allElemLinks: { id: string; from: string; to: string }[] = [];
   const elemAt = new Map<string, string>();
+  const allElemAt: { id: string; nodeId: string }[] = [];
   const junctions = new Set<string>();
   const nodeElevations = new Map<string, number>();
 
@@ -86,7 +88,14 @@ function parseSystemSection(lines: string[]): ParsedTopology {
     const elemAtMatch = line.match(/^ELEM\s+(\S+)\s+AT\s+(\S+)/i);
     if (elemAtMatch) {
       const [, id, nodeId] = elemAtMatch;
-      elemAt.set(id, nodeId);
+      // Keep first occurrence in elemAt for property lookup
+      if (!elemAt.has(id)) {
+        elemAt.set(id, nodeId);
+      }
+      // Track ALL occurrences so a reused ID declared AT multiple nodes
+      // (e.g. duplicate "FBC7" for two separate flow boundaries) still
+      // creates an element at every node it's declared at.
+      allElemAt.push({ id, nodeId });
       continue;
     }
 
@@ -103,7 +112,7 @@ function parseSystemSection(lines: string[]): ParsedTopology {
     }
   }
 
-  return { elemLinks, allElemLinks, elemAt, junctions, nodeElevations };
+  return { elemLinks, allElemLinks, elemAt, allElemAt, junctions, nodeElevations };
 }
 
 function parseFloat2(s: string | undefined): number {
@@ -726,7 +735,7 @@ function buildReactFlowGraph(
   nodeComments: Map<string, string> = new Map(),
   elementComments: Map<string, string> = new Map()
 ): { nodes: WhamoNode[]; edges: WhamoEdge[]; pcharData: Record<number, PcharType>; tcharData: Record<number, TcharType>; vSchedules: Record<number, { t: number; g: number }[]> } {
-  const { elemLinks, allElemLinks, elemAt, junctions, nodeElevations } = topo;
+  const { elemLinks, allElemLinks, elemAt, allElemAt, junctions, nodeElevations } = topo;
   const { reservoirs, conduits, pumps, turbines, oneway, oppumps, opturbs, surgeTanks, flowBCs } = elems;
 
   let rfIdCounter = 1;
@@ -741,7 +750,8 @@ function buildReactFlowGraph(
   const allWhamoNodeIds = new Set<string>();
   // Use allElemLinks so every link segment (including reused element IDs like C1) contributes its nodes
   allElemLinks.forEach(({ from, to }) => { allWhamoNodeIds.add(from); allWhamoNodeIds.add(to); });
-  elemAt.forEach((nodeId) => allWhamoNodeIds.add(nodeId));
+  // Use allElemAt so every AT occurrence (including reused element IDs) contributes its node
+  allElemAt.forEach(({ nodeId }) => allWhamoNodeIds.add(nodeId));
   nodeElevations.forEach((_, nodeId) => allWhamoNodeIds.add(nodeId));
 
   const adjacency = new Map<string, string[]>();
@@ -820,7 +830,7 @@ function buildReactFlowGraph(
     const isJunction = junctions.has(whamoId);
 
     // Find if any element is declared AT this node
-    const atElemId = [...elemAt.entries()].find(([, nid]) => nid === whamoId)?.[0];
+    const atElemId = allElemAt.find(({ nodeId }) => nodeId === whamoId)?.id;
 
     if (atElemId && reservoirs.has(atElemId)) {
       const r = reservoirs.get(atElemId)!;
@@ -901,7 +911,7 @@ function buildReactFlowGraph(
   // calls getOrCreateWhamoNode('N1'), the node is already typed correctly.
 
   // Reservoirs AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!reservoirs.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const r = reservoirs.get(elemId)!;
@@ -928,7 +938,7 @@ function buildReactFlowGraph(
   });
 
   // Surge Tanks AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!surgeTanks.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const st = surgeTanks.get(elemId)!;
@@ -966,7 +976,7 @@ function buildReactFlowGraph(
   });
 
   // Flow Boundaries AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!flowBCs.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const fb = flowBCs.get(elemId)!;
@@ -991,7 +1001,7 @@ function buildReactFlowGraph(
   });
 
   // Turbines AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!turbines.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const t = turbines.get(elemId)!;
@@ -1024,7 +1034,7 @@ function buildReactFlowGraph(
   });
 
   // Pumps AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!pumps.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const p = pumps.get(elemId)!;
@@ -1056,7 +1066,7 @@ function buildReactFlowGraph(
   });
 
   // Check Valves (ONEWAY) AT nodes
-  elemAt.forEach((nodeId, elemId) => {
+  allElemAt.forEach(({ id: elemId, nodeId }) => {
     if (!oneway.has(elemId)) return;
     if (nodeIdMap.has(nodeId)) return;
     const vc = oneway.get(elemId)!;
@@ -1223,7 +1233,7 @@ function buildReactFlowGraph(
 
   // Ensure any remaining AT-nodes not yet visited via link processing get created.
   // All typed elements were pre-created above, so this only creates plain nodes.
-  elemAt.forEach((nodeId, _elemId) => {
+  allElemAt.forEach(({ nodeId }) => {
     getOrCreateWhamoNode(nodeId);
   });
 
