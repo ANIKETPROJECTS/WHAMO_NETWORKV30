@@ -1,0 +1,221 @@
+TEESTA-VI-UPSTREAM WATERWAY(n=0.012) ST 16 m DIA &,Surge tunnel 9.75 m dia 1 in 12 slope at EL 320
+c *************************************************************************
+c IS4 CASE
+C    SYSTEM CONNECTIVITY
+SYSTEM
+    ELEM HW AT 1
+    ELEM C1 LINK 1 2
+    ELEM C1 LINK 2 3
+    ELEM C1 LINK 3 4
+    ELEM C1 LINK 4 5
+    ELEM C1 LINK 5 6
+    ELEM C1 LINK 6 7
+    ELEM C1 LINK 7 8
+    JUNCTION AT 8
+    ELEM O1 LINK 8 9
+    ELEM C2 LINK 8 10
+    ELEM C3 LINK 10 11
+    ELEM C4 LINK 11 12
+    ELEM C5 LINK 12 13
+    ELEM C2 LINK 8 15
+    ELEM C3 LINK 15 16
+    ELEM C4 LINK 16 17
+    ELEM C5 LINK 17 18
+    ELEM FB1 AT 13
+    ELEM FB2 AT 18
+    ELEM ST AT 9
+ FINISH
+
+c *************************************************************************
+C    ELEMENT PROPERTIES
+
+RESERVOIR 
+ ID HW 
+ ELEV 1180.8
+FINISH
+ 
+CONDUIT
+ ID C1
+ LENGTH 6458
+ DIAM 33.03
+ CELERITY 3000
+ FRICTION 0.0083
+ ADDEDLOSS
+     CPLUS 0.12
+     CMINUS 0.12
+ NUMSEG 20
+FINISH
+
+CONDUIT                                                                         
+  ID O1                                                                          
+  LENGTH 9.84                                                                 
+  CELERITY 2500                                                                  
+  DIAM 17.65                                                                    
+  ADDEDLOSS                                                                      
+    CPLUS 1.77                                                                 
+    CMINUS 1.49                                                                 
+FINISH
+
+SURGETANK
+ ID ST 
+ ELBOTTOM 1016.8
+ ELTOP 1302
+ SHAPE
+  E 1016.8                                                                       
+  A 2162.4                                                                        
+E 1049.6
+A 2162.4
+E 1052.9
+A 2904.6
+E 1056.2
+A 4003.2
+E 1059.4
+A 5181.2
+E 1062.7
+A 6410.5
+E 1066.0
+A 7662.8
+E 1069.3
+A 8905.3
+E 1072.6
+A 10086.
+E 1075.8
+A 11139.8
+E 1079.1
+A 11971.1
+E 1081.6
+A 12307.6
+E 1266.1
+A 12307.6
+E 1266.11
+A 2162.4                                                  
+ E 1302                                                                        
+ A 2162.4
+ CELERITY 3000
+ FRICTION 0.0053
+FINISH
+
+CONDUIT
+ ID C2
+ LENGTH 177.9
+ DIAM 17.71
+ CELERITY 2500
+ FRICTION 0.0086
+ ADDEDLOSS
+     CPLUS 0.1
+     CMINUS 0.1
+ NUMSEG 2
+FINISH
+
+CONDUIT
+ ID C3
+ LENGTH 210
+ DIAM 17.71
+ CELERITY 2500
+ FRICTION 0.0086
+ ADDEDLOSS
+     CPLUS 0.05
+     CMINUS 0.05
+ NUMSEG 2
+FINISH
+
+CONDUIT
+ ID C4
+ LENGTH 180.4
+ DIAM 17.71
+ CELERITY 2500
+ FRICTION 0.0086
+ ADDEDLOSS
+     CPLUS 0.05
+     CMINUS 0.05
+ NUMSEG 1
+FINISH
+
+CONDUIT
+ ID C5
+ LENGTH 98.4
+ DIAM 14.76
+ CELERITY 2500
+ FRICTION 0.0091
+ ADDEDLOSS
+     CPLUS 0.2
+     CMINUS 0.2
+ NUMSEG 1
+FINISH
+
+FLOWBC
+ ID FB1
+ QSCHEDULE 1
+FINISH
+
+FLOWBC
+ ID FB2
+ QSCHEDULE 2
+FINISH
+
+c *************************************************************************
+C    VALVE or TURBINE CHARACTERISTICS
+
+SCHEDULE
+  QSCHEDULE 1
+   T    0.0 Q  0
+   T   10.0 Q  468.7
+   T   40.0 Q  468.7
+   T   80.0 Q  5156
+   T 9999.0 Q  5156
+FINISH
+
+SCHEDULE
+ QSCHEDULE 2
+   T    0.0 Q  0
+   T  410.0 Q  0
+   T  420.0 Q  468.7
+   T  450.0 Q  468.7
+   T  490.0 Q  5156
+   T 9999.0 Q  5156
+FINISH 
+
+
+c *************************************************************************
+C    OUTPUT REQUESTS
+
+   HISTORY                                                                        
+    NODE 1 HEAD                                                                   
+    NODE 4 Q HEAD PIEZHEAD                                                       
+    NODE 8 Q HEAD PIEZHEAD                                              
+    NODE 10 Q HEAD PIEZHEAD                                              
+    NODE 13 Q HEAD                                         
+    ELEM ST ELEV Q                                                                                                                 
+    NODE 18 Q HEAD                                                                
+   FINISH                                                                         
+                                                                                  
+   PLOT 
+    NODE 1 HEAD                                                                           
+    NODE 4 Q HEAD PIEZHEAD                                                       
+    NODE 8 Q HEAD PIEZHEAD                                              
+    NODE 10 Q HEAD PIEZHEAD                                              
+    NODE 13 Q HEAD                                         
+    ELEM ST ELEV Q                                                                                                                 
+    NODE 18 Q HEAD                                                               
+   FINISH
+
+ DISPLAY
+  OFF
+ FINISH
+
+c *************************************************************************
+C    COMPUTATIONAL PARAMETERS
+
+CONTROL
+ DTCOMP 0.2 DTOUT  1.0 TMAX  1000.0
+ DTCOMP 0.2 DTOUT  2.0 TMAX  1000.0
+FINISH
+
+
+c *************************************************************************
+C    EXECUTION CONTROL
+
+GO
+GOODBYE
+
+
