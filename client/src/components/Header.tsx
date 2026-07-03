@@ -421,6 +421,7 @@ export function Header({
     // Auto-arrange immediately after loading — store is synchronous so positions
     // are available in the same tick.
     autoArrange();
+    window.dispatchEvent(new CustomEvent('fit-view-request'));
     onActivate?.();
     setShowImportInp(false);
     setInpFile(null);

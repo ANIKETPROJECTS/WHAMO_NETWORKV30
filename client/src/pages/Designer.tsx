@@ -629,7 +629,7 @@ function DesignerInner() {
             loadNetwork(json.nodes, expandedEdges, { ...json.computationalParams, qSchedules: json.qSchedules, hSchedules: json.hSchedules }, json.outputRequests, loadedProjectName, undefined, json.pcharData, json.snapshotTimes, json.nodeSelectionSet, json.tcharData, json.vSchedules);
             setProjectState("active");
             setServerProjectId(null);
-            setTimeout(() => autoArrange(), 0);
+            setTimeout(() => { autoArrange(); requestAnimationFrame(() => fitView()); }, 0);
             toast({ title: "Project Loaded", description: `Network topology "${loadedProjectName}" restored from JSON.` });
           } else {
             throw new Error("Invalid JSON format");
@@ -729,6 +729,14 @@ function DesignerInner() {
   }, []);
 
   useEffect(() => {
+    const handleFitViewRequest = () => {
+      requestAnimationFrame(() => fitView());
+    };
+    window.addEventListener('fit-view-request', handleFitViewRequest);
+    return () => window.removeEventListener('fit-view-request', handleFitViewRequest);
+  }, [fitView]);
+
+  useEffect(() => {
     const handleFirstInteraction = () => setHasInteracted(true);
     document.addEventListener('mousedown', handleFirstInteraction, { once: true });
     return () => document.removeEventListener('mousedown', handleFirstInteraction);
@@ -762,7 +770,7 @@ function DesignerInner() {
     setProjectState("active");
     setServerProjectId(project.id);
     setShowProjectsList(false);
-    setTimeout(() => autoArrange(), 0);
+    setTimeout(() => { autoArrange(); requestAnimationFrame(() => fitView()); }, 0);
     toast({ title: "Project Loaded", description: `"${loadedProjectName}" opened from your account.` });
   };
 
@@ -817,7 +825,7 @@ function DesignerInner() {
             setProjectState("active");
             setServerProjectId(null);
             setShowProjectsList(false);
-            setTimeout(() => autoArrange(), 0);
+            setTimeout(() => { autoArrange(); requestAnimationFrame(() => fitView()); }, 0);
             toast({ title: "Project Loaded", description: `"${name}" imported from file.` });
           }
         } else if (fileName.endsWith('.inp')) {
@@ -828,7 +836,7 @@ function DesignerInner() {
             setProjectState("active");
             setServerProjectId(null);
             setShowProjectsList(false);
-            setTimeout(() => autoArrange(), 0);
+            setTimeout(() => { autoArrange(); requestAnimationFrame(() => fitView()); }, 0);
             toast({ title: "Project Loaded", description: `"${name}" imported from .inp file.` });
           }
         }
