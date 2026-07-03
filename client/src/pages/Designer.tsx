@@ -817,6 +817,7 @@ function DesignerInner() {
             setProjectState("active");
             setServerProjectId(null);
             setShowProjectsList(false);
+            setTimeout(() => autoArrange(), 0);
             toast({ title: "Project Loaded", description: `"${name}" imported from file.` });
           }
         } else if (fileName.endsWith('.inp')) {
@@ -827,6 +828,7 @@ function DesignerInner() {
             setProjectState("active");
             setServerProjectId(null);
             setShowProjectsList(false);
+            setTimeout(() => autoArrange(), 0);
             toast({ title: "Project Loaded", description: `"${name}" imported from .inp file.` });
           }
         }
