@@ -1,0 +1,134 @@
+C SYSTEM CONNECTIVITY 
+SYSTEM                                                                          
+EL HW AT 1                                                                      
+EL C1 LINK 1 2                                                                  
+EL C1 LINK 2 3                                                                  
+EL C1 LINK 3 4                                                                  
+EL C1 LINK 4 5                                                                  
+EL C1 LINK 5 6                                                                  
+EL C1 LINK 6 7                                                                  
+EL C1 LINK 7 8                                                                  
+EL C1 LINK 8 9                                                                  
+EL C1 LINK 9 10                                                                 
+EL C1 LINK 10 11                                                                
+EL C1 LINK 11 12                                                                
+EL C1 LINK 12 13                                                                
+EL C1 LINK 13 14                                                                
+EL C1 LINK 14 15                                                                
+EL C1 LINK 15 16                                                                
+EL C1 LINK 16 17                                                                
+EL C1 LINK 17 18                                                                
+EL C1 LINK 18 19                                                                
+EL C1 LINK 19 20                                                                
+EL C1 LINK 20 21
+EL C1 LINK 21 22                                                                  
+EL C1 LINK 22 23                                                                  
+EL C1 LINK 23 24                                                                  
+EL C1 LINK 24 25                                                                  
+EL C1 LINK 25 26                                                                  
+EL C1 LINK 26 27                                                                  
+EL C1 LINK 27 28                                                                  
+EL C1 LINK 28 29                                                                  
+EL C1 LINK 29 30                                                                 
+EL C1 LINK 30 31                                                                
+EL C1 LINK 31 32                                                                
+EL C1 LINK 32 33                                                                
+EL C1 LINK 33 34                                                                
+EL C1 LINK 34 35                                                                
+EL C1 LINK 35 36                                                                
+EL C1 LINK 36 37                                                                
+EL C1 LINK 37 38                                                                
+EL C1 LINK 38 39                                                                
+EL C1 LINK 39 40                                                                
+EL C1 LINK 40 41 
+EL C1 LINK 41 42  
+EL C1 LINK 42 43                                                             
+JUNCTION AT 43                                             
+EL C2 LINK 43 44
+EL C2 LINK 44 45                                                              
+EL C2 LINK 45 46                                                                                                                           
+EL C2 LINK 46 47
+EL C2 LINK 47 48
+EL C2 LINK 48 49                                                                                                                                                                               
+JUNCTION AT 49                                                               
+EL C3 LINK 49 50                                                             
+EL C3 LINK 49 51                                                             
+EL C3 LINK 49 52
+EL FBC1 AT 50                                                              
+EL FBC2 AT 51                                                              
+EL FBC3 AT 52 
+EL DUM1 LINK 43 53
+EL ST AT 53
+NODE 43 ELEV 704.72                                                                                      
+NODE 49 ELEV 42.65                                                     
+NODE 50 ELEV 42.65                                                        
+NODE 51 ELEV 42.65                                                    
+NODE 52 ELEV 42.65
+FINISH 
+                                                                                                                                                                                                          
+C ELEMENT PROPERTIES                                                       
+RESERVOIR ID HW ELEV 885.83 FINISH
+                                     
+CONDUIT ID C1 LENG 481.33 DIAM 19.69 CELER 4665 FRIC 0.012 NUMSEG 3 FINISH    
+CONDUIT ID C2 LENG 457.12 DIAM 15.75 CELER 2957 FRIC 0.012 NUMSEG 3 FINISH 
+CONDUIT ID C3 LENG 147.64 DIAM 10.17 CELER 3124 FRIC 0.012 NUMSEG 1 FINISH
+C 1.5 m dia orifce and 800mm X 6000mm gate groove   
+CONDUIT ID DUM1 DUMMY DIAM 13.27 ADDEDLOSS CPLUS 1.8366 CMINUS 1.8366 FINISH
+                                                                                      
+SURGETANK ID ST SIMPLE
+ELBOTTOM 718.50 
+ELTOP 967.85 
+DIAM 59.055 
+CELER 4658 
+FRIC 0.008     
+SHAPE                                                                           
+E 718.50 A 3726                                                              
+E 967.85 A 3726                                                       
+FINISH 
+
+C FLOW BOUNDARY OPERATING SCHEDULE                                                                     
+FLOWBC ID FBC1 QSCHEDULE 1 FINISH                                               
+FLOWBC ID FBC2 QSCHEDULE 1 FINISH                                               
+FLOWBC ID FBC3 QSCHEDULE 1 FINISH                                               
+                                                                                  
+SCHEDULE 
+QSCHEDULE 1                                                                                                    
+TIME 0.0 Q 0
+TIME 10 Q 1271
+TIME 251 Q 1271
+TIME 261 Q 0
+TIME 1200 Q 0                                                                                                                     
+FINISH                                                                          
+                                                                                  
+C OUTPUT REQUESTS                                                               
+HISTORY                                                                   
+NODE 50 Q PRESSURE HEAD                                                         
+NODE 51 Q PRESSURE HEAD                                                         
+NODE 52 Q PRESSURE HEAD 
+NODE 53 Q PRESSURE HEAD
+ELEM ST ELEV                                                                                                                                                                              
+FINISH                                                                          
+                                                                                  
+PLOT                                                                          
+NODE 50 Q PRESSURE HEAD                                                         
+NODE 51 Q PRESSURE HEAD                                                         
+NODE 52 Q PRESSURE HEAD
+NODE 53 Q PRESSURE HEAD 
+ELEM ST ELEV                                                                                                                      
+FINISH
+
+DISPLAY ALL FINISH
+                                                                                                                                                                                                                                                                                                                                                                                            
+C COMPUTATIONAL PARAMETERS                                                      
+CONTROL                                                                         
+DTCOMP 0.1 DTOUT 50 TMAX 800.0           
+DTCOMP 1.0 DTOUT 50 TMAX 1200                                                   
+FINISH
+
+TEXT 
+
+FULL LOAD ACCEPTANCE FOLLOWED BY FULL LOAD REJECTION 
+                                                                                                                                                      
+C EXECUTION CONTROL                                                                                                                                      
+GO  
+                                                            
