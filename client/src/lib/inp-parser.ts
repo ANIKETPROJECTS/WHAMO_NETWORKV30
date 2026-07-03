@@ -27,7 +27,7 @@ interface ParsedElements {
     hasAddedLoss?: boolean; cplus?: number; cminus?: number;
   }>;
   flowBCs: Map<string, { scheduleNumber: number }>;
-  oppumps: Set<string>;
+  oppumps: Map<string, { mode: string; toff?: number }>;
   opturbs: Map<string, { mode: string; vScheduleNumber?: number }>;
   pchar: Map<number, PcharType>;
   tchar: Map<number, TcharType>;
@@ -129,7 +129,7 @@ function parseElementProperties(lines: string[]): ParsedElements {
   const oneway = new Map<string, { diam: number }>();
   const surgeTanks = new Map<string, any>();
   const flowBCs = new Map<string, { scheduleNumber: number }>();
-  const oppumps = new Set<string>();
+  const oppumps = new Map<string, { mode: string; toff?: number }>();
   const opturbs = new Map<string, { mode: string; vScheduleNumber?: number }>();
   const pchar = new Map<number, PcharType>();
   const tchar = new Map<number, TcharType>();
@@ -610,7 +610,13 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^OPPUMP\b/i.test(upper)) {
       const idM = trimmed.match(/\bID\s+(\S+)/i);
-      if (idM) oppumps.add(idM[1]);
+      if (idM) {
+        const modeM = trimmed.match(/\b(PUMP|SHUTOFF|MOTORSTARTUP|NORMALSTOP)\b/i);
+        const mode = modeM ? modeM[1].toUpperCase() : 'PUMP';
+        const toffM = trimmed.match(/\bTOFF\s+([\d.]+)/i);
+        const toff = toffM ? parseFloat(toffM[1]) : undefined;
+        oppumps.set(idM[1], { mode, toff });
+      }
       continue;
     }
   }
@@ -890,12 +896,15 @@ function buildReactFlowGraph(
       });
     } else if (atElemId && pumps.has(atElemId)) {
       const p = pumps.get(atElemId)!;
-      const status = oppumps.has(atElemId) ? 'ACTIVE' : 'INACTIVE';
+      const oppumpInfo = oppumps.get(atElemId);
+      const status = oppumpInfo ? 'ACTIVE' : 'INACTIVE';
       nodeObjects.push({
         id: rfId, type: 'pump', position: pos,
         data: { label: atElemId, type: 'pump', nodeNumber: nodeNum, elevation: elev,
           pumpStatus: status, pumpType: p.pumpType, rq: p.rq, rhead: p.rhead,
           rspeed: p.rspeed, rtorque: p.rtorque, wr2: p.wr2,
+          pumpOpMode: oppumpInfo?.mode ?? 'PUMP',
+          pumpToff: oppumpInfo?.toff,
           comment: elementComments.get(atElemId) }
       });
     } else if (atElemId && oneway.has(atElemId)) {
@@ -1060,7 +1069,8 @@ function buildReactFlowGraph(
     const elev = nodeElevations.get(nodeId) ?? 0;
     const pos = getPos(nodeId);
     const nodeNum = parseInt(nodeId) || nodeObjects.length + 1;
-    const status = oppumps.has(elemId) ? 'ACTIVE' : 'INACTIVE';
+    const oppumpInfo = oppumps.get(elemId);
+    const status = oppumpInfo ? 'ACTIVE' : 'INACTIVE';
     nodeObjects.push({
       id: rfId,
       type: 'pump',
@@ -1077,6 +1087,8 @@ function buildReactFlowGraph(
         rspeed: p.rspeed,
         rtorque: p.rtorque,
         wr2: p.wr2,
+        pumpOpMode: oppumpInfo?.mode ?? 'PUMP',
+        pumpToff: oppumpInfo?.toff,
         comment: elementComments.get(elemId),
       }
     });
@@ -1118,7 +1130,8 @@ function buildReactFlowGraph(
       const p = pumps.get(elemId)!;
       const fromRfId = getOrCreateWhamoNode(from);
       const toRfId = getOrCreateWhamoNode(to);
-      const status = oppumps.has(elemId) ? 'ACTIVE' : 'INACTIVE';
+      const oppumpInfo = oppumps.get(elemId);
+      const status = oppumpInfo ? 'ACTIVE' : 'INACTIVE';
       edgeObjects.push({
         id: nextId(),
         source: fromRfId,
@@ -1134,6 +1147,8 @@ function buildReactFlowGraph(
           rspeed: p.rspeed,
           rtorque: p.rtorque,
           wr2: p.wr2,
+          pumpOpMode: oppumpInfo?.mode ?? 'PUMP',
+          pumpToff: oppumpInfo?.toff,
           comment: elementComments.get(elemId),
         }
       });

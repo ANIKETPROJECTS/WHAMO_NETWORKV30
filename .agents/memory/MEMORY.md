@@ -3,3 +3,4 @@
 - [INP parser comment extraction](inp-comment-extraction.md) — generic WHAMO section headers ("RESERVOIRS", "TURBINES", etc.) must be excluded from pendingComment, not attached to elements.
 - [Duplicate element IDs](inp-duplicate-ids.md) — flowBoundary/pump/checkValve/turbine labels must be globally unique; duplicates silently break JSON-vs-INP round-trips.
 - [Auto-arrange crossing bug](autoarrange-layout-crossing.md) — barycenter using parents+children together in one pass can flip sibling order between adjacent levels, crossing parallel branches that shouldn't cross.
+- [OPPUMP mode parsing](oppump-mode.md) — oppumps changed from Set to Map storing {mode,toff?}; pumpOpMode/pumpToff added to both NodeData and EdgeData; generator writes SHUTOFF TOFF X vs PUMP correctly.

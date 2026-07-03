@@ -563,7 +563,17 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     const label = el.data?.label as string;
     if (!label || seenOppump.has(label)) return;
     seenOppump.add(label);
-    addL(`OPPUMP ID ${label} PUMP FINISH`);
+    const opMode: string = (el.data as any)?.pumpOpMode ?? 'PUMP';
+    const toff: number | undefined = (el.data as any)?.pumpToff;
+    if (opMode === 'SHUTOFF' && toff !== undefined) {
+      addL(`OPPUMP ID ${label} SHUTOFF TOFF ${toff} FINISH`);
+    } else if (opMode === 'MOTORSTARTUP') {
+      addL(`OPPUMP ID ${label} MOTORSTARTUP FINISH`);
+    } else if (opMode === 'NORMALSTOP') {
+      addL(`OPPUMP ID ${label} NORMALSTOP FINISH`);
+    } else {
+      addL(`OPPUMP ID ${label} PUMP FINISH`);
+    }
     addL('');
   });
 

@@ -12,7 +12,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   app.use("/api/auth", authRoutes);
-  setupWhamoRoutes(app);
+  setupWhamoRoutes(app, authenticateToken);
 
   // All project routes require authentication
   app.get("/api/projects", authenticateToken, async (req, res) => {

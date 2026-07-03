@@ -60,6 +60,16 @@ interface NodeData extends Record<string, unknown> {
   mode?: 'fixed' | 'schedule';
   hScheduleNumber?: number;
   _unitCache?: UnitCache;
+  // Pump node fields (mirrors EdgeData pump fields for pump AT-node elements)
+  pumpStatus?: string;
+  pumpType?: number;
+  rq?: number | string;
+  rhead?: number | string;
+  rspeed?: number | string;
+  rtorque?: number | string;
+  wr2?: number | string;
+  pumpOpMode?: string;   // 'PUMP' | 'SHUTOFF' | 'MOTORSTARTUP' | 'NORMALSTOP'
+  pumpToff?: number;     // TOFF value when pumpOpMode === 'SHUTOFF'
 }
 
 interface EdgeData extends Record<string, unknown> {
@@ -90,6 +100,8 @@ interface EdgeData extends Record<string, unknown> {
   rspeed?: number | string;
   rtorque?: number | string;
   wr2?: number | string;
+  pumpOpMode?: string;   // 'PUMP' | 'SHUTOFF' — from OPPUMP line
+  pumpToff?: number;     // TOFF value when pumpOpMode === 'SHUTOFF'
   // CheckValve element-edge fields
   valveStatus?: string;
   valveDiam?: number | string;

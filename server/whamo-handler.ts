@@ -3,13 +3,13 @@ import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 
-export function setupWhamoRoutes(app: any) {
+export function setupWhamoRoutes(app: any, authenticateToken: any) {
   const tempDir = path.join(process.cwd(), "temp");
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
   const enginePath = path.join(process.cwd(), "server", "engines", "WHAMO.EXE");
 
-  app.post("/api/generate-out", async (req: any, res: any) => {
+  app.post("/api/generate-out", authenticateToken, async (req: any, res: any) => {
     const { inpContent } = req.body;
     if (typeof inpContent !== "string" || inpContent.length === 0) {
       return res.status(400).json({ success: false, error: "No INP content provided" });
@@ -84,7 +84,7 @@ export function setupWhamoRoutes(app: any) {
   });
 
   // Alias for backward compatibility if needed
-  app.post("/api/run-whamo", (req: any, res: any) => {
+  app.post("/api/run-whamo", authenticateToken, (req: any, res: any) => {
     // Redirect or reuse the logic
     req.url = "/api/generate-out";
     app._router.handle(req, res);
