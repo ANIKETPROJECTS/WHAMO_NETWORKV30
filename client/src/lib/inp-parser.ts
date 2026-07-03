@@ -73,7 +73,7 @@ function parseSystemSection(lines: string[]): ParsedTopology {
     // Skip comment lines (C or C followed by space)
     if (upper === 'C' || upper.startsWith('C ')) continue;
 
-    const elemLinkMatch = line.match(/^ELEM\s+(\S+)\s+LINK\s+(\S+)\s+(\S+)/i);
+    const elemLinkMatch = line.match(/^EL(?:EM)?\s+(\S+)\s+LINK\s+(\S+)\s+(\S+)/i);
     if (elemLinkMatch) {
       const [, id, from, to] = elemLinkMatch;
       // Keep first occurrence in elemLinks for property lookup
@@ -85,7 +85,7 @@ function parseSystemSection(lines: string[]): ParsedTopology {
       continue;
     }
 
-    const elemAtMatch = line.match(/^ELEM\s+(\S+)\s+AT\s+(\S+)/i);
+    const elemAtMatch = line.match(/^EL(?:EM)?\s+(\S+)\s+AT\s+(\S+)/i);
     if (elemAtMatch) {
       const [, id, nodeId] = elemAtMatch;
       // Keep first occurrence in elemAt for property lookup
