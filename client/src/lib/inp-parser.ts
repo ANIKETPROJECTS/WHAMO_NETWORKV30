@@ -292,12 +292,14 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^TURBINE\b/i.test(upper)) {
       const fullLine = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) { fullLine.push(ln); i = j; break; }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^ONEWAY\b|^PCHAR\b|^TCHAR\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
-        fullLine.push(ln);
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) { fullLine.push(ln); i = j; break; }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^ONEWAY\b|^SURGETANK\b|^FLOWBC\b|^PCHAR\b|^TCHAR\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
+          fullLine.push(ln);
+        }
       }
       const combined = fullLine.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -370,18 +372,23 @@ function parseElementProperties(lines: string[]): ParsedElements {
       let mode: 'fixed' | 'schedule' = 'fixed';
       let hScheduleNumber: number | undefined;
 
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) { i = j; break; }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^PCHAR\b|^OPPUMP\b/i.test(ln)) { i = j - 1; break; }
-        const idM = ln.match(/\bID\s+(\S+)/i);
-        if (idM) id = idM[1];
-        const elevM = ln.match(/\bELEV\s+([\-\d.]+)/i);
-        if (elevM) elevation = parseFloat(elevM[1]);
-        const hschedM = ln.match(/\bHSCHEDULE\s+(\d+)/i);
-        if (hschedM) { hScheduleNumber = parseInt(hschedM[1]); mode = 'schedule'; }
+      const fullLine = [trimmed];
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) { fullLine.push(ln); i = j; break; }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^PCHAR\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
+          fullLine.push(ln);
+        }
       }
+      const combined = fullLine.join(' ');
+      const idM = combined.match(/\bID\s+(\S+)/i);
+      if (idM) id = idM[1];
+      const elevM = combined.match(/\bELEV\s+([\-\d.]+)/i);
+      if (elevM) elevation = parseFloat(elevM[1]);
+      const hschedM = combined.match(/\bHSCHEDULE\s+(\d+)/i);
+      if (hschedM) { hScheduleNumber = parseInt(hschedM[1]); mode = 'schedule'; }
       if (id) {
         reservoirs.set(id, { elevation, mode, hScheduleNumber });
       }
@@ -396,19 +403,21 @@ function parseElementProperties(lines: string[]): ParsedElements {
       let distance: number | undefined, area: number | undefined, d: number | undefined, a: number | undefined;
 
       const fullLine = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) {
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) {
+            fullLine.push(ln);
+            i = j;
+            break;
+          }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^PCHAR\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) {
+            i = j - 1;
+            break;
+          }
           fullLine.push(ln);
-          i = j;
-          break;
         }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^PCHAR\b|^OPPUMP\b/i.test(ln)) {
-          i = j - 1;
-          break;
-        }
-        fullLine.push(ln);
       }
       const combined = fullLine.join(' ');
 
@@ -426,11 +435,11 @@ function parseElementProperties(lines: string[]): ParsedElements {
         });
         continue;
       }
-      const lenM = combined.match(/\bLEN(?:GTH)?\s+([\-\d.]+)/i);
+      const lenM = combined.match(/\bLEN(?:G|GTH)?\s+([\-\d.]+)/i);
       if (lenM) length = parseFloat(lenM[1]);
       const diamM = combined.match(/\bDIAM(?:ETER)?\s+([\-\d.]+)/i);
       if (diamM) diameter = parseFloat(diamM[1]);
-      const celM = combined.match(/\bCEL(?:ERITY)?\s+([\-\d.]+)/i);
+      const celM = combined.match(/\bCELER(?:ITY)?\s+([\-\d.]+)/i);
       if (celM) celerity = parseFloat(celM[1]);
       const fricM = combined.match(/\bFRIC(?:TION)?\s+([\-\d.]+)/i);
       if (fricM) friction = parseFloat(fricM[1]);
@@ -466,19 +475,21 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^PUMP\b/i.test(upper) && !/^PCHAR\b/i.test(upper)) {
       const fullLine = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) {
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) {
+            fullLine.push(ln);
+            i = j;
+            break;
+          }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^PCHAR\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) {
+            i = j - 1;
+            break;
+          }
           fullLine.push(ln);
-          i = j;
-          break;
         }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^PCHAR\b|^OPPUMP\b/i.test(ln)) {
-          i = j - 1;
-          break;
-        }
-        fullLine.push(ln);
       }
       const combined = fullLine.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -503,12 +514,14 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^ONEWAY\b/i.test(upper)) {
       const block = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) { i = j; break; }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b/i.test(ln)) { i = j - 1; break; }
-        block.push(ln);
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) { i = j; break; }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^ONEWAY\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
+          block.push(ln);
+        }
       }
       const combined = block.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -522,13 +535,15 @@ function parseElementProperties(lines: string[]): ParsedElements {
     if (/^SURGETANK\b/i.test(upper)) {
       const block = [trimmed];
       const rawBlock: string[] = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) { i = j; break; }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
-        block.push(ln);
-        rawBlock.push(ln);
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) { i = j; break; }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
+          block.push(ln);
+          rawBlock.push(ln);
+        }
       }
       const combined = block.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -537,7 +552,7 @@ function parseElementProperties(lines: string[]): ParsedElements {
         const topM = combined.match(/\bELTOP\s+([\-\d.]+)/i);
         const botM = combined.match(/\bELBOTTOM\s+([\-\d.]+)/i);
         const diamM = combined.match(/\bDIAM(?:ETER)?\s+([\-\d.]+)/i);
-        const celM = combined.match(/\bCEL(?:ERITY)?\s+([\-\d.]+)/i);
+        const celM = combined.match(/\bCELER(?:ITY)?\s+([\-\d.]+)/i);
         const fricM = combined.match(/\bFRIC(?:TION)?\s+([\-\d.]+)/i);
         const htankM = combined.match(/\bHTANK\s+([\-\d.]+)/i);
         const riserDiamM = combined.match(/\bRISERDIAM\s+([\-\d.]+)/i);
@@ -575,12 +590,14 @@ function parseElementProperties(lines: string[]): ParsedElements {
 
     if (/^FLOWBC\b|^FLOWBOUNDARY\b/i.test(upper)) {
       const block = [trimmed];
-      for (let j = i + 1; j < lines.length; j++) {
-        const ln = lines[j].trim();
-        if (!ln) continue;
-        if (/^FINISH\b/i.test(ln)) { i = j; break; }
-        if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
-        block.push(ln);
+      if (!/\bFINISH\b/i.test(trimmed)) {
+        for (let j = i + 1; j < lines.length; j++) {
+          const ln = lines[j].trim();
+          if (!ln) continue;
+          if (/^FINISH\b/i.test(ln)) { i = j; break; }
+          if (/^RESERVOIR\b|^CONDUIT\b|^PUMP\b|^TURBINE\b|^SURGETANK\b|^FLOWBC\b|^OPPUMP\b|^OPTURB\b/i.test(ln)) { i = j - 1; break; }
+          block.push(ln);
+        }
       }
       const combined = block.join(' ');
       const idM = combined.match(/\bID\s+(\S+)/i);
@@ -1374,7 +1391,7 @@ export function parseInpFile(content: string): {
         if (inlineQ) {
           const num = parseInt(inlineQ[1]);
           const rest = inlineQ[2];
-          const tqPairs = [...rest.matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+          const tqPairs = [...rest.matchAll(/\bT(?:IME)?\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
           if (tqPairs.length > 0) {
             qSchedules[num] = tqPairs.map(m => ({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
           } else {
@@ -1400,7 +1417,7 @@ export function parseInpFile(content: string): {
         flushQSched();
         const num = parseInt(qschedM[1]);
         const rest = qschedM[2].trim();
-        const tqPairs = [...rest.matchAll(/\bT\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
+        const tqPairs = [...rest.matchAll(/\bT(?:IME)?\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/gi)];
         if (tqPairs.length > 0) {
           qSchedules[num] = tqPairs.map(m => ({ time: parseFloat(m[1]), flow: parseFloat(m[2]) }));
         } else {
@@ -1412,7 +1429,7 @@ export function parseInpFile(content: string): {
       }
       // T/Q pair lines belonging to current QSCHEDULE block
       if (currentQSchedNum !== null) {
-        const tqM = t.match(/^\s*T\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/i);
+        const tqM = t.match(/^\s*T(?:IME)?\s+([\-\d.]+)\s+Q\s+([\-\d.]+)/i);
         if (tqM) {
           currentQPoints.push({ time: parseFloat(tqM[1]), flow: parseFloat(tqM[2]) });
           continue;
@@ -1423,7 +1440,7 @@ export function parseInpFile(content: string): {
       if (hschedM) { currentHSchedNum = parseInt(hschedM[1]); currentHPoints = []; continue; }
       // T/H pair line within an HSCHEDULE block
       if (currentHSchedNum !== null) {
-        const thM = t.match(/\bT\s+([\-\d.]+)\s+H\s+([\-\d.]+)/i);
+        const thM = t.match(/\bT(?:IME)?\s+([\-\d.]+)\s+H\s+([\-\d.]+)/i);
         if (thM) currentHPoints.push({ time: parseFloat(thM[1]), head: parseFloat(thM[2]) });
       }
     }
