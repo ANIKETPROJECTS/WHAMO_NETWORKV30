@@ -356,9 +356,51 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     addL('');
   });
 
+  // Validate that IDs which must be globally unique (flow boundaries, pumps, check valves,
+  // turbines) aren't reused across different elements. Unlike conduits — which may legitimately
+  // share a label when they represent segments of the same physical pipe — these element types
+  // each map to exactly one `ELEM <ID> AT <node>` / property block in the .inp file. Reusing an
+  // ID silently drops one of the elements on export and produces a network that reads back
+  // differently than what is shown on the canvas.
+  const uniqueIdTypes: Record<string, string> = {
+    flowBoundary: 'Flow Boundary',
+    pump: 'Pump',
+    checkValve: 'Check Valve',
+    turbine: 'Turbine',
+  };
+  const labelOwners = new Map<string, { typeName: string; count: number }>();
+  [...nodes, ...edges].forEach(el => {
+    // Edges always carry a generic React Flow `type` (e.g. "connection"); the actual element
+    // kind (pump/checkValve/turbine) lives in `data.type`. Nodes mirror the kind on both fields.
+    // Check `data.type` first so edge-based elements are detected correctly.
+    const type = (el.data as any)?.type ?? (el as any).type;
+    const typeName = uniqueIdTypes[type as string];
+    if (!typeName) return;
+    const label = (el.data as any)?.label;
+    if (!label) return;
+    const existing = labelOwners.get(label);
+    if (existing) {
+      existing.count++;
+    } else {
+      labelOwners.set(label, { typeName, count: 1 });
+    }
+  });
+  const duplicateIds = Array.from(labelOwners.entries()).filter(([, info]) => info.count > 1);
+  if (duplicateIds.length > 0) {
+    const details = duplicateIds.map(([id, info]) => `"${id}" (${info.typeName}, used ${info.count}x)`).join(', ');
+    throw new Error(
+      `Duplicate element IDs found: ${details}. Each ${Object.values(uniqueIdTypes).join('/')} must have a unique Label/ID — ` +
+      `otherwise the exported .inp file will only keep one of them and the imported network will not match what's shown on the canvas. ` +
+      `Please rename the duplicates in the Properties Panel before exporting.`
+    );
+  }
+
+  const exportedFlowBoundaryLabels = new Set<string>();
   nodes.filter(n => n.type === 'flowBoundary').forEach(n => {
     const d = n.data;
     if (!d) return;
+    if (exportedFlowBoundaryLabels.has(d.label)) return;
+    exportedFlowBoundaryLabels.add(d.label);
     addComment(d.comment);
     addL(`FLOWBC ID ${d.label} QSCHEDULE ${d.scheduleNumber} FINISH`);
   });

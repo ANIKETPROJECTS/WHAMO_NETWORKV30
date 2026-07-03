@@ -25,6 +25,37 @@ type NumericInputProps = Omit<ComponentProps<typeof Input>, 'value' | 'onChange'
   onValueChange: (val: string) => void;
 };
 
+function DuplicateLabelWarning({
+  label,
+  nodes,
+  edges,
+  selectedId,
+  elementTypes,
+}: {
+  label: string;
+  nodes: { id: string; data?: any }[];
+  edges: { id: string; data?: any }[];
+  selectedId: string | null | undefined;
+  elementTypes: string[];
+}) {
+  const lbl = (label || '').trim();
+  if (!lbl) return null;
+  const matchesType = (t: any) => elementTypes.includes(t);
+  const others = [
+    ...nodes.filter(n => n.id !== selectedId && matchesType(n.data?.type) && (n.data?.label as string) === lbl),
+    ...edges.filter(e => e.id !== selectedId && matchesType(e.data?.type) && (e.data?.label as string) === lbl),
+  ];
+  if (others.length === 0) return null;
+  return (
+    <div className="rounded-md bg-red-50 border border-red-300 px-2 py-1 flex items-start gap-1.5 mt-1" data-testid="warning-duplicate-label">
+      <AlertTriangle className="h-3 w-3 text-red-500 mt-0.5 shrink-0" />
+      <p className="text-[10px] text-red-700 leading-snug" style={{ fontFamily: 'Poppins, sans-serif' }}>
+        ID &quot;{lbl}&quot; is already used by {others.length === 1 ? 'another element' : `${others.length} other elements`}. Duplicate IDs will break the exported .inp file — please make it unique.
+      </p>
+    </div>
+  );
+}
+
 function NumericInput({ value, onValueChange, ...props }: NumericInputProps) {
   const display =
     value === undefined || value === null || value === ''
@@ -848,6 +879,7 @@ export function PropertiesPanel() {
                 className="h-7 text-[12px] font-medium text-black border-slate-300"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               />
+              <DuplicateLabelWarning label={formData.label as string} nodes={nodes} edges={edges} selectedId={selectedElementId} elementTypes={['flowBoundary']} />
             </PropRow>
             <PropRow label="Comment" noBorder>
               <Input
@@ -872,6 +904,7 @@ export function PropertiesPanel() {
                 className="h-7 text-[12px] font-medium text-black border-slate-300"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               />
+              <DuplicateLabelWarning label={formData.label as string} nodes={nodes} edges={edges} selectedId={selectedElementId} elementTypes={['pump']} />
             </PropRow>
             <PropRow label="Comment" noBorder>
               <Input
@@ -896,6 +929,7 @@ export function PropertiesPanel() {
                 className="h-7 text-[12px] font-medium text-black border-slate-300"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               />
+              <DuplicateLabelWarning label={formData.label as string} nodes={nodes} edges={edges} selectedId={selectedElementId} elementTypes={['checkValve']} />
             </PropRow>
             <PropRow label="Comment" noBorder>
               <Input
@@ -920,6 +954,7 @@ export function PropertiesPanel() {
                 className="h-7 text-[12px] font-medium text-black border-slate-300"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               />
+              <DuplicateLabelWarning label={formData.label as string} nodes={nodes} edges={edges} selectedId={selectedElementId} elementTypes={['turbine']} />
             </PropRow>
             <PropRow label="Comment" noBorder>
               <Input
