@@ -1181,8 +1181,29 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
       }
     });
 
+    // Sync qSchedule points back onto every flowBoundary node's own data.
+    // Import (.inp) parsing only fills the global qSchedules table keyed by
+    // schedule number — it never writes schedulePoints onto the node itself.
+    // Validation and the Properties Panel read node.data.schedulePoints, so
+    // without this sync every freshly-imported Flow Boundary looks like it
+    // has zero Q-Schedule points even when its schedule is fully populated.
+    const syncedNodes = processedNodes.map(node => {
+      if (
+        node.type === 'flowBoundary' &&
+        node.data?.scheduleNumber !== undefined &&
+        (!Array.isArray(node.data?.schedulePoints) || (node.data.schedulePoints as any[]).length === 0)
+      ) {
+        const num = Number(node.data.scheduleNumber);
+        const pts = extractedQSchedules[num];
+        if (pts && pts.length > 0) {
+          return { ...node, data: { ...node.data, schedulePoints: pts } } as WhamoNode;
+        }
+      }
+      return node;
+    });
+
     set({ 
-      nodes: processedNodes, 
+      nodes: syncedNodes, 
       edges: processedEdges, 
       hSchedules: extractedHSchedules,
       qSchedules: extractedQSchedules,
