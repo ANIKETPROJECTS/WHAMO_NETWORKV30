@@ -96,7 +96,9 @@ function DesignerInner() {
   const { zoomIn, zoomOut, fitView, screenToFlowPosition } = useReactFlow();
   useEffect(() => { registerScreenToFlowPosition(screenToFlowPosition); }, [screenToFlowPosition]);
   const [validationData, setValidationData] = useState<{ errors: ValidationError[], warnings: ValidationError[] } | null>(null);
+  const [validationMode, setValidationMode] = useState<'inp' | 'out'>('inp');
   const [pendingGenerateMode, setPendingGenerateMode] = useState<'inp' | 'out' | null>(null);
+  const forceGenerateOutRef = useRef<() => void>(() => {});
   const [showNodeSelection, setShowNodeSelection] = useState(false);
   const [showVisualization, setShowVisualization] = useState(false);
 
@@ -661,6 +663,7 @@ function DesignerInner() {
     if (force !== true) {
       const results = validateNetwork(nodes as WhamoNode[], edges as WhamoEdge[]);
       if (results.errors.length > 0 || results.warnings.length > 0) {
+        setValidationMode('inp');
         setValidationData(results);
         return;
       }
@@ -689,6 +692,7 @@ function DesignerInner() {
   const handleGenerateOutInit = () => {
     const results = validateNetwork(nodes as WhamoNode[], edges as WhamoEdge[]);
     if (results.errors.length > 0 || results.warnings.length > 0) {
+      setValidationMode('out');
       setValidationData(results);
       return;
     }
@@ -1107,7 +1111,19 @@ function DesignerInner() {
         isOpen={!!validationData}
         onClose={() => setValidationData(null)}
         onGenerate={() => {
-          handleGenerateInp(true);
+          if (validationMode === 'out') {
+            forceGenerateOutRef.current();
+          } else {
+            handleGenerateInp(true);
+          }
+          setValidationData(null);
+        }}
+        onForceGenerate={() => {
+          if (validationMode === 'out') {
+            forceGenerateOutRef.current();
+          } else {
+            handleGenerateInp(true);
+          }
           setValidationData(null);
         }}
         errors={validationData?.errors || []}
@@ -1129,6 +1145,7 @@ function DesignerInner() {
         isGeneratingOut={isGeneratingOut}
         pendingGenerateMode={pendingGenerateMode}
         onClearPendingMode={() => setPendingGenerateMode(null)}
+        onRegisterForceGenerateOut={(fn) => { forceGenerateOutRef.current = fn; }}
         onSave={() => handleSave()} 
         onSaveAs={handleSaveAs}
         onLoad={handleLoadClick} 

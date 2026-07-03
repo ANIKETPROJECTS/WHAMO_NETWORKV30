@@ -263,6 +263,7 @@ interface HeaderProps {
   currentProjectId?: string | null;
   isProjectOpen?: boolean;
   onActivate?: () => void;
+  onRegisterForceGenerateOut?: (fn: () => void) => void;
 }
 
 export function Header({
@@ -283,6 +284,7 @@ export function Header({
   currentProjectId,
   isProjectOpen = false,
   onActivate,
+  onRegisterForceGenerateOut,
 }: HeaderProps) {
   const { user, logout, isMasterAdmin } = useAuth();
   const [, setLocation] = useLocation();
@@ -303,6 +305,13 @@ export function Header({
       setShowOutputDialog(true);
     }
   }, [pendingGenerateMode]);
+
+  // Keep Designer's ValidationModal able to trigger a direct .OUT generation
+  // (bypassing the Output Requests dialog) for Force Generate / Generate Anyway.
+  useEffect(() => {
+    onRegisterForceGenerateOut?.(() => handleGenerateOutDirectly(projectName));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onRegisterForceGenerateOut, projectName, nodes, edges]);
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);

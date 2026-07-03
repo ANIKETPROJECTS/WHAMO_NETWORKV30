@@ -23,6 +23,7 @@ interface ValidationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onGenerate: () => void;
+  onForceGenerate?: () => void;
   errors: ValidationError[];
   warnings: ValidationError[];
 }
@@ -31,6 +32,7 @@ export function ValidationModal({
   isOpen,
   onClose,
   onGenerate,
+  onForceGenerate,
   errors,
   warnings,
 }: ValidationModalProps) {
@@ -156,7 +158,7 @@ export function ValidationModal({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="p-6 pt-0 border-t mt-auto gap-2 sm:gap-0">
+        <DialogFooter className="p-6 pt-0 border-t mt-auto flex-col sm:flex-row gap-2 sm:gap-2">
           <Button variant="outline" onClick={onClose} data-testid="button-close-validation">
             Close
           </Button>
@@ -168,6 +170,15 @@ export function ValidationModal({
           >
             {hasErrors ? "Fix Errors to Generate" : "Generate Anyway"}
           </Button>
+          {hasErrors && (
+            <Button
+              onClick={onForceGenerate}
+              variant="destructive"
+              data-testid="button-force-generate"
+            >
+              Force Generate
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
