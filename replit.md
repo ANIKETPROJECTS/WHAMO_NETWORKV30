@@ -28,7 +28,8 @@ Preferred communication style: Simple, everyday language.
 - **Production Build**: esbuild bundles server code, Vite builds client assets
 
 ### Data Storage
-- **Storage**: In-memory storage (no database required)
+- **Primary Storage**: MongoDB (via Mongoose) — connection URI stored in the `MONGODB_URI` Replit Secret
+- **Auth**: JWT-based; secret stored in the `JWT_SECRET` environment variable (set in `.replit` `[userenv.shared]`)
 - **Schema Location**: `shared/schema.ts` contains type definitions and Zod validation schemas
 
 ### Project Structure
@@ -81,8 +82,18 @@ Preferred communication style: Simple, everyday language.
 
 ## Replit Environment Notes
 
-- The app runs on port 5000 (required for webview output on Replit)
-- Workflow: `Start application` runs `npm run dev` and exposes port 5000 as a webview
+### Required secrets / env vars
+| Name | Where set | Purpose |
+|---|---|---|
+| `MONGODB_URI` | Replit Secret | MongoDB connection string (required at startup) |
+| `JWT_SECRET` | `.replit` `[userenv.shared]` | JWT signing secret |
+| `PORT` | `.replit` `[env]` | Port for the main Express server (default 5000) |
+
+### Workflows
+- **Start application** — `npm run dev` → Express + Vite dev server on port 5000 (main app webview)
+- **GRAPHVISUALIZATIONCODE/artifacts/whamo-viewer: web** — Vite dev server on port 21454 (standalone React viewer)
+- **GRAPHVISUALIZATIONCODE/artifacts/api-server: API Server** — Express API on port 8080 (standalone API for the viewer)
+
+### Build & deploy
 - Deployment build: `npm run build` → `node ./dist/index.cjs`
-- No database is required — in-memory storage is used
 - The WHAMO engine (`server/engines/WHAMO.EXE`) requires `wine` to run on Linux and is executed in an isolated temporary directory without invoking a shell
