@@ -344,24 +344,31 @@ function parseElementProperties(lines: string[]): ParsedElements {
       continue;
     }
 
-    if (/^SCHEDULE\b.*\bVSCHEDULE\b/i.test(upper)) {
-      const numM = trimmed.match(/\bVSCHEDULE\s+(\d+)/i);
-      if (numM) {
-        const schedNum = parseInt(numM[1]);
-        const pts: { t: number; g: number }[] = [];
-        const tgMatches = trimmed.matchAll(/\bT\s+([\d.]+)\s+G\s+([\d.]+)/gi);
-        for (const m of tgMatches) {
-          pts.push({ t: parseFloat(m[1]), g: parseFloat(m[2]) });
-        }
-        if (pts.length === 0) {
-          for (let j = i + 1; j < lines.length; j++) {
-            const ln = lines[j].trim();
-            if (!ln || /^FINISH\b/i.test(ln)) { i = j; break; }
-            const tgInline = ln.matchAll(/\bT\s+([\d.]+)\s+G\s+([\d.]+)/gi);
-            for (const m of tgInline) pts.push({ t: parseFloat(m[1]), g: parseFloat(m[2]) });
+    if (/^SCHEDULE\b/i.test(upper)) {
+      // Collect the full block (SCHEDULE keyword line + all lines until FINISH)
+      const block: string[] = [trimmed];
+      for (let j = i + 1; j < lines.length; j++) {
+        const ln = lines[j].trim();
+        if (!ln) continue;
+        if (/^FINISH\b/i.test(ln)) { i = j; break; }
+        if (/^SCHEDULE\b|^HISTORY\b|^CONTROL\b|^DISPLAY\b|^OPTURB\b|^OPPUMP\b|^RESERVOIR\b|^CONDUIT\b|^TURBINE\b|^PUMP\b/i.test(ln)) { i = j - 1; break; }
+        block.push(ln);
+      }
+      // Only handle VSCHEDULE blocks here; skip HSCHEDULE/QSCHEDULE (handled elsewhere)
+      const blockText = block.join(' ');
+      if (/\bVSCHEDULE\b/i.test(blockText)) {
+        const numM = blockText.match(/\bVSCHEDULE\s+(\d+)/i);
+        if (numM) {
+          const schedNum = parseInt(numM[1]);
+          const pts: { t: number; g: number }[] = [];
+          for (const ln of block) {
+            const tgMatches = ln.matchAll(/\bT\s+([\d.]+)\s+G\s+([\d.]+)/gi);
+            for (const m of tgMatches) {
+              pts.push({ t: parseFloat(m[1]), g: parseFloat(m[2]) });
+            }
           }
+          vSchedules.set(schedNum, pts);
         }
-        vSchedules.set(schedNum, pts);
       }
       continue;
     }
