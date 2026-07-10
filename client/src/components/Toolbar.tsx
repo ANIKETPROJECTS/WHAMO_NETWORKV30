@@ -16,6 +16,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getAuthHeader } from '@/lib/queryClient';
 import { Button } from '@/components/ui/button';
 import { useNetworkStore } from '@/lib/store';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -121,9 +122,9 @@ export function Toolbar({ onExport, onSave, onLoad }: { onExport: (fileName?: st
       const inpContent = generateInpFile(nodes, edges, false);
 
       // 2. Send to backend
-      const response = await fetch("/api/run-whamo", { 
+      const response = await fetch("/api/run-whamo", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify({ inpContent })
       });
 

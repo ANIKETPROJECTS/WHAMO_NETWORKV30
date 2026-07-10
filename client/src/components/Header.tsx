@@ -61,6 +61,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
+import { getAuthHeader } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import {
   Select,
@@ -566,7 +567,7 @@ export function Header({
 
       const response = await fetch("/api/run-whamo", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getAuthHeader() },
         body: JSON.stringify({ inpContent }),
       });
 
