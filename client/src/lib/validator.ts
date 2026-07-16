@@ -51,19 +51,6 @@ export function getNodeSequenceViolations(nodes: WhamoNode[], edges: WhamoEdge[]
       return;
     }
 
-    const gap = tgtNum - srcNum;
-    const gapAllowedByJunction =
-      isBranchingJunction(src, connectionCounts.get(src.id) || 0) ||
-      isBranchingJunction(tgt, connectionCounts.get(tgt.id) || 0);
-
-    if (gap > 1 && !gapAllowedByJunction) {
-      violations.push({
-        id: tgt.id,
-        message: `Node numbers must be sequential without gaps. Node ${tgtNum} (${tgt.data.label}) follows Node ${srcNum} (${src.data.label}) in pipe ${e.data?.label || e.id}; use Node ${srcNum + 1} unless this is a multi-conduit junction branch.`,
-        elementLabel: tgt.data.label,
-        elementType: tgt.type,
-      });
-    }
   });
 
   return violations;
