@@ -2124,7 +2124,7 @@ export function PropertiesPanel() {
                               </div>
 
                               {isAuto ? (
-                                /* D input → auto-compute A */
+                                /* D ↔ A bidirectional */
                                 <>
                                   <div className="flex-1">
                                     <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>D ({dimLabel})</div>
@@ -2134,8 +2134,8 @@ export function PropertiesPanel() {
                                       onValueChange={(v) => {
                                         const d = parseFloat(v);
                                         const newShape = [...(formData.shape as any[])];
-                                        const a = !isNaN(d) && d > 0 ? parseFloat((def.aFactor * d * d).toFixed(6)) : 0;
-                                        const perimeter = !isNaN(d) && d > 0 ? parseFloat((def.pFactor * d).toFixed(6)) : 0;
+                                        const a = !isNaN(d) && d > 0 ? parseFloat((def.aFactor * d * d).toFixed(6)) : (newShape[index].a ?? 0);
+                                        const perimeter = !isNaN(d) && d > 0 ? parseFloat((def.pFactor * d).toFixed(6)) : (newShape[index].perimeter ?? 0);
                                         newShape[index] = { ...newShape[index], d: v, a, perimeter };
                                         handleChange('shape', newShape);
                                       }}
@@ -2143,13 +2143,20 @@ export function PropertiesPanel() {
                                   </div>
                                   <div className="flex-1">
                                     <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>A ({areaLabel})</div>
-                                    <div
-                                      className="h-6 flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 text-[11px] font-medium text-slate-600 select-none"
-                                      style={{ fontFamily: 'Poppins, sans-serif' }}
-                                      title="Auto-computed from D"
-                                    >
-                                      {pair.a != null && pair.a !== 0 ? Number(pair.a).toFixed(4) : '—'}
-                                    </div>
+                                    <NumericInput
+                                      className="h-6 text-[11px] font-medium text-black border-slate-300"
+                                      value={pair.a ?? ''}
+                                      onValueChange={(v) => {
+                                        const a = parseFloat(v);
+                                        const newShape = [...(formData.shape as any[])];
+                                        const d = !isNaN(a) && a > 0 && def.aFactor > 0
+                                          ? parseFloat(Math.sqrt(a / def.aFactor).toFixed(6))
+                                          : (parseFloat(newShape[index].d) || 0);
+                                        const perimeter = d > 0 ? parseFloat((def.pFactor * d).toFixed(6)) : (newShape[index].perimeter ?? 0);
+                                        newShape[index] = { ...newShape[index], a: v, d: d > 0 ? String(d) : newShape[index].d, perimeter };
+                                        handleChange('shape', newShape);
+                                      }}
+                                    />
                                   </div>
                                 </>
                               ) : (
