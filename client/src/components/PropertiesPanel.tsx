@@ -332,6 +332,10 @@ export function PropertiesPanel() {
   const [nodeNumInput, setNodeNumInput] = useState<string>("");
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [isDirty, setIsDirty] = useState(false);
+  // Prevents the effectiveUnitForSync useEffect from overwriting formData with
+  // stale store data during a local unit toggle. The toggle updates the store
+  // AND formData atomically; the sync effect must not clobber the result.
+  const isHandlingUnitToggle = useRef(false);
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [showMaterialProps, setShowMaterialProps] = useState(false);
   const [stMaterialPickerOpen, setStMaterialPickerOpen] = useState(false);
@@ -364,6 +368,9 @@ export function PropertiesPanel() {
     : edges.find(e => e.id === selectedElementId);
   const effectiveUnitForSync = (selectedElementForSync?.data?.unit as UnitSystem) || globalUnit;
   useEffect(() => {
+    // Skip re-sync when we're the ones changing the unit — we already set
+    // formData correctly in handleUnitToggle and don't want it overwritten.
+    if (isHandlingUnitToggle.current) return;
     if (!selectedElementForSync?.data) return;
     setFormData({ ...selectedElementForSync.data });
     setIsDirty(false);
@@ -530,6 +537,8 @@ export function PropertiesPanel() {
 
   const handleUnitToggle = (newUnit: UnitSystem) => {
     if (newUnit === currentUnit) return;
+    // Guard the sync useEffect from overwriting our converted formData.
+    isHandlingUnitToggle.current = true;
 
     const existingCache: Record<string, any> = (formData._unitCache as any) || {};
 
@@ -606,36 +615,63 @@ export function PropertiesPanel() {
       }));
     }
 
-    // Handle shape array (Surge Tank SHAPE E-A pairs) — convert each sub-field.
-    if (Array.isArray(formData.shape) && (formData.shape as any[]).length > 0) {
-      dataUpdate.shape = (formData.shape as any[]).map((pair: any) => {
+    // Handle shape array (Surge Tank SHAPE E-A pairs).
+    // Strategy (per SI/FPS spec):
+    //   1. Always convert E (elevation) — length scale.
+    //   2. Always convert D (linear dimension) — length scale.
+    //   3. For a named shape type: recompute A = aFactor × D² and
+    //      perimeter = pFactor × D from the converted D.  This is safer
+    //      than scaling A by 10.7639 because it keeps A exactly consistent
+    //      with the shape formula and avoids compounding rounding errors.
+    //   4. For custom shapes (no D link): scale A with the area factor and
+    //      perimeter with the length factor directly.
+    const SHAPE_FACTORS: Record<string, { aFactor: number; pFactor: number }> = {
+      circular:            { aFactor: 0.785, pFactor: 3.14  },
+      horseshoe:           { aFactor: 0.829, pFactor: 3.27  },
+      modified_horseshoe:  { aFactor: 0.893, pFactor: 3.58  },
+      dshaped:             { aFactor: 0.813, pFactor: 3.21  },
+    };
+    const shapePairs: any[] = Array.isArray(formData.shape) ? (formData.shape as any[]) : [];
+    const shapeTypeCurrent: string = String(formData.shapeType || 'custom');
+    const currentShapeFactor = SHAPE_FACTORS[shapeTypeCurrent];
+
+    if (shapePairs.length > 0) {
+      dataUpdate.shape = shapePairs.map((pair: any) => {
         const updated: any = { ...pair };
-        // e → elevation (length)
-        const eNum = parseFloat(pair.e);
-        if (!isNaN(eNum) && (pair.e !== '' && pair.e !== 0 && pair.e !== '0')) {
+
+        // E — elevation (always a length)
+        const eRaw = pair.e;
+        const eNum = typeof eRaw === 'number' ? eRaw : parseFloat(eRaw);
+        if (!isNaN(eNum)) {
           updated.e = parseFloat(convertValue(eNum, currentUnit, newUnit, 'elevation').toFixed(6));
         }
-        // d → diameter/dimension (length)
-        if (pair.d !== '' && pair.d != null) {
-          const dNum = parseFloat(pair.d);
-          if (!isNaN(dNum) && dNum !== 0) {
-            updated.d = parseFloat(convertValue(dNum, currentUnit, newUnit, 'diameter').toFixed(6)).toString();
+
+        // D — linear dimension (convert; then recompute A & P from it when shape type is known)
+        const dStr = pair.d != null ? String(pair.d) : '';
+        const dNum = parseFloat(dStr);
+        if (dStr !== '' && !isNaN(dNum) && dNum > 0) {
+          const dConverted = parseFloat(convertValue(dNum, currentUnit, newUnit, 'diameter').toFixed(6));
+          updated.d = String(dConverted);
+          if (currentShapeFactor) {
+            // Recompute A and perimeter from converted D (avoids double-scaling)
+            updated.a        = parseFloat((currentShapeFactor.aFactor * dConverted * dConverted).toFixed(6));
+            updated.perimeter = parseFloat((currentShapeFactor.pFactor * dConverted).toFixed(6));
+            return updated; // Skip the fallback scaling below
           }
         }
-        // a → area
-        if (pair.a !== '' && pair.a != null) {
-          const aNum = parseFloat(pair.a);
-          if (!isNaN(aNum) && aNum !== 0) {
-            updated.a = parseFloat(convertValue(aNum, currentUnit, newUnit, 'area').toFixed(6));
-          }
+
+        // Custom shape or no valid D — scale A with area factor, perimeter with length factor
+        const aRaw = pair.a;
+        const aNum = typeof aRaw === 'number' ? aRaw : parseFloat(aRaw);
+        if (!isNaN(aNum) && aNum !== 0) {
+          updated.a = parseFloat(convertValue(aNum, currentUnit, newUnit, 'area').toFixed(6));
         }
-        // perimeter → length
-        if (pair.perimeter !== '' && pair.perimeter != null) {
-          const pNum = parseFloat(pair.perimeter);
-          if (!isNaN(pNum) && pNum !== 0) {
-            updated.perimeter = parseFloat(convertValue(pNum, currentUnit, newUnit, 'length').toFixed(6));
-          }
+        const pRaw = pair.perimeter;
+        const pNum = typeof pRaw === 'number' ? pRaw : parseFloat(pRaw);
+        if (!isNaN(pNum) && pNum !== 0) {
+          updated.perimeter = parseFloat(convertValue(pNum, currentUnit, newUnit, 'length').toFixed(6));
         }
+
         return updated;
       });
     }
@@ -657,6 +693,9 @@ export function PropertiesPanel() {
       updateEdgeData(selectedElementId, dataUpdate);
     }
     setFormData(prev => ({ ...prev, ...dataUpdate }));
+    // Release the guard on the next microtask — after the sync useEffect has
+    // had a chance to fire (and been skipped) for this render cycle.
+    setTimeout(() => { isHandlingUnitToggle.current = false; }, 0);
   };
 
   const handleChange = (key: string, value: any) => {

@@ -1,0 +1,44 @@
+Here's the proper SI ↔ FPS math you can hand to Replit (or verify yourself) so the conversions are unambiguous.
+
+## Base conversion factor
+
+**1 ft = 0.3048 m** (exact, by international definition)
+**1 m = 3.28084 ft**
+
+## Derived conversions needed for this panel
+
+| Quantity | Dimension | SI → FPS | FPS → SI |
+|---|---|---|---|
+| Length (E, D, Top/Bottom Elevation, Diameter) | L | value_ft = value_m × 3.28084 | value_m = value_ft × 0.3048 |
+| Area (A) | L² | value_ft² = value_m² × (3.28084)² = value_m² × 10.7639 | value_m² = value_ft² × (0.3048)² = value_ft² × 0.092903 |
+| Velocity (Celerity) | L/T | value_ft/s = value_m/s × 3.28084 | value_m/s = value_ft/s × 0.3048 |
+
+Note: **A = shapeFactor × D²** doesn't need separate conversion logic if D is converted correctly first — since Area is derived from D, just recompute A from the converted D using the same formula. That's actually the safer implementation than converting A directly, because it avoids compounding rounding errors.
+
+## Worked example (matches your screenshots)
+
+Say the tank was originally entered in **SI**, with D = 1 m:
+
+**Step 1 — Convert D:**
+D_ft = 1 m × 3.28084 = **3.28084 ft**
+
+**Step 2 — Recompute A using the Horse Shoe factor (0.829):**
+A_ft² = 0.829 × (3.28084)² = 0.829 × 10.7639 = **8.9235 ft²**
+
+So toggling from SI to FPS, the panel *should* show:
+
+| Field | SI (input) | FPS (should display) |
+|---|---|---|
+| D | 1 m | **3.28084 ft** |
+| A | 0.829 m² | **8.9235 ft²** |
+
+Instead your screenshots showed D = 1 ft and A = 0.829 ft² after toggling — i.e., no conversion happened at all, just a label swap.
+
+## Prompt you can send to Replit
+
+> The SI/FPS toggle is still not converting stored values — it's only changing unit labels (confirmed: D=1 and A=0.829 stay identical whether the panel shows m or ft). Please fix this so that toggling units performs an actual conversion on the underlying data:
+> - Length fields (E, D, Top Elevation, Bottom Elevation, plain Diameter): multiply by 3.28084 for m→ft, or by 0.3048 for ft→m.
+> - After converting D, **recompute Area** using the existing shape formula (A = shapeFactor × D²) rather than converting A directly — this keeps Area consistent with the shape math instead of applying two separate conversions that could drift apart.
+> - Velocity fields (Celerity): multiply by 3.28084 for m/s→ft/s, or 0.3048 for ft/s→m/s.
+> - Store one canonical unit system internally (recommend always storing in SI or always in FPS) and only convert for display — this avoids repeated rounding errors if the user toggles back and forth multiple times.
+> Please test with D = 1 m → should display as D ≈ 3.28084 ft and A ≈ 8.9235 ft² (using Horse Shoe factor 0.829) when toggled to FPS.
