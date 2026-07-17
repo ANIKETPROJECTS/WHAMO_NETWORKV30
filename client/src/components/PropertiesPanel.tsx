@@ -605,6 +605,40 @@ export function PropertiesPanel() {
       }));
     }
 
+    // Handle shape array (Surge Tank SHAPE E-A pairs) — convert each sub-field.
+    if (Array.isArray(formData.shape) && (formData.shape as any[]).length > 0) {
+      dataUpdate.shape = (formData.shape as any[]).map((pair: any) => {
+        const updated: any = { ...pair };
+        // e → elevation (length)
+        const eNum = parseFloat(pair.e);
+        if (!isNaN(eNum) && (pair.e !== '' && pair.e !== 0 && pair.e !== '0')) {
+          updated.e = parseFloat(convertValue(eNum, currentUnit, newUnit, 'elevation').toFixed(6));
+        }
+        // d → diameter/dimension (length)
+        if (pair.d !== '' && pair.d != null) {
+          const dNum = parseFloat(pair.d);
+          if (!isNaN(dNum) && dNum !== 0) {
+            updated.d = parseFloat(convertValue(dNum, currentUnit, newUnit, 'diameter').toFixed(6)).toString();
+          }
+        }
+        // a → area
+        if (pair.a !== '' && pair.a != null) {
+          const aNum = parseFloat(pair.a);
+          if (!isNaN(aNum) && aNum !== 0) {
+            updated.a = parseFloat(convertValue(aNum, currentUnit, newUnit, 'area').toFixed(6));
+          }
+        }
+        // perimeter → length
+        if (pair.perimeter !== '' && pair.perimeter != null) {
+          const pNum = parseFloat(pair.perimeter);
+          if (!isNaN(pNum) && pNum !== 0) {
+            updated.perimeter = parseFloat(convertValue(pNum, currentUnit, newUnit, 'length').toFixed(6));
+          }
+        }
+        return updated;
+      });
+    }
+
     // Carry over any unsaved local-only fields (materialId, manningsN, etc.)
     // that live in formData but haven't been persisted to the store yet.
     // Without this, the useEffect that re-reads from the store after the unit
