@@ -20,9 +20,9 @@ export function generateInpFile(nodes: WhamoNode[], edges: WhamoEdge[], autoDown
     if (value === undefined) return '';
     // If current unit is FPS, value is already in FPS
     // If current unit is SI, we convert it to FPS for the .inp file
-    if (currentUnit === 'FPS') return value.toString();
+    if (currentUnit === 'FPS') return Number(value).toFixed(3);
     const factor = SI_TO_FPS[type] || 1;
-    return (value * factor).toString();
+    return (value * factor).toFixed(3);
   };
 
   // Helper to add line
