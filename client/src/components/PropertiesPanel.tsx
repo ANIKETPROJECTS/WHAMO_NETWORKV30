@@ -334,6 +334,8 @@ export function PropertiesPanel() {
   const [isDirty, setIsDirty] = useState(false);
   const [materialPickerOpen, setMaterialPickerOpen] = useState(false);
   const [showMaterialProps, setShowMaterialProps] = useState(false);
+  const [stMaterialPickerOpen, setStMaterialPickerOpen] = useState(false);
+  const [stShowMaterialProps, setStShowMaterialProps] = useState(false);
 
   useEffect(() => {
     const el = selectedElementId
@@ -2009,7 +2011,26 @@ export function PropertiesPanel() {
                     <NumericInput
                       id="diam"
                       value={formData.diameter}
-                      onValueChange={(v) => handleChange('diameter', v)}
+                      onValueChange={(v) => {
+                        const newDiam = parseFloat(v);
+                        handleChange('diameter', v);
+                        if (!isNaN(newDiam) && newDiam > 0) {
+                          const C0 = currentUnit === 'SI' ? 1440 : 4720;
+                          const Kw = currentUnit === 'SI' ? 2.07e9 : 3e5;
+                          const E  = parseFloat(formData.pipeE) || 0;
+                          const WT = parseFloat(formData.pipeWT) || 0;
+                          if (E > 0 && WT > 0) {
+                            const c = C0 / Math.sqrt(1 + (Kw / E) * (newDiam / WT));
+                            handleChange('celerity', parseFloat(c.toFixed(4)).toString());
+                          }
+                          const K = currentUnit === 'SI' ? 124.58 : 185;
+                          const n = parseFloat(formData.manningsN);
+                          if (!isNaN(n) && n > 0) {
+                            const f = (K * n * n) / Math.pow(newDiam, 1 / 3);
+                            handleChange('friction', parseFloat(f.toFixed(6)).toString());
+                          }
+                        }
+                      }}
                       className="h-7 text-[12px] font-medium text-black border-slate-300"
                       style={{ fontFamily: 'Poppins, sans-serif' } as any}
                     />
@@ -2094,11 +2115,46 @@ export function PropertiesPanel() {
                     style={{ fontFamily: 'Poppins, sans-serif' } as any}
                   />
                 </PropRow>
-                <PropRow label="Friction" noBorder>
+                <PropRow label="Friction">
                   <NumericInput
                     id="st-friction"
                     value={formData.friction}
-                    onValueChange={(v) => handleChange('friction', v)}
+                    onValueChange={(v) => {
+                      handleChange('friction', v);
+                      const f = parseFloat(v);
+                      const diam = parseFloat(formData.diameter) || 0;
+                      const K = currentUnit === 'SI' ? 124.58 : 185;
+                      if (!isNaN(f) && f > 0 && diam > 0) {
+                        handleChange('manningsN', parseFloat(Math.sqrt((f * Math.pow(diam, 1 / 3)) / K).toFixed(6)).toString());
+                      }
+                    }}
+                    className="h-7 text-[12px] font-medium text-black border-slate-300"
+                    style={{ fontFamily: 'Poppins, sans-serif' } as any}
+                  />
+                </PropRow>
+                <PropRow label="Manning's n" noBorder>
+                  <NumericInput
+                    id="st-mannings-n"
+                    placeholder="e.g. 0.013"
+                    value={(() => {
+                      if (formData.manningsN != null && formData.manningsN !== '') return formData.manningsN;
+                      const f = parseFloat(formData.friction) || 0;
+                      const diam = parseFloat(formData.diameter) || 0;
+                      const K = currentUnit === 'SI' ? 124.58 : 185;
+                      if (f > 0 && diam > 0) return parseFloat(Math.sqrt((f * Math.pow(diam, 1 / 3)) / K).toFixed(6));
+                      return '';
+                    })()}
+                    onValueChange={(v) => {
+                      const n = parseFloat(v);
+                      handleChange('manningsN', v);
+                      if (!isNaN(n) && n > 0) {
+                        const diam = parseFloat(formData.diameter) || 0;
+                        const K = currentUnit === 'SI' ? 124.58 : 185;
+                        if (diam > 0) {
+                          handleChange('friction', parseFloat(((K * n * n) / Math.pow(diam, 1 / 3)).toFixed(6)).toString());
+                        }
+                      }
+                    }}
                     className="h-7 text-[12px] font-medium text-black border-slate-300"
                     style={{ fontFamily: 'Poppins, sans-serif' } as any}
                   />
@@ -2139,6 +2195,171 @@ export function PropertiesPanel() {
                     </div>
                   </div>
                 )}
+              </PropSection>
+
+              {/* ── SURGE TANK: Pipe Material ── */}
+              {(() => {
+                const matId = formData.materialId ? Number(formData.materialId) : null;
+                const mat = matId != null ? PIPE_MATERIALS_BY_ID[matId] : null;
+                const applyStMaterial = (idStr: string) => {
+                  if (idStr === '__none__') { handleChange('materialId', ''); return; }
+                  const id = parseInt(idStr, 10);
+                  const m = PIPE_MATERIALS_BY_ID[id];
+                  if (!m) return;
+                  handleChange('materialId', String(id));
+                  const n = m.manningsN;
+                  handleChange('manningsN', String(n));
+                  const eVal = currentUnit === 'SI' ? m.youngsModulus_Pa : m.youngsModulus_psi;
+                  if (eVal > 0) handleChange('pipeE', String(eVal));
+                  const D = parseFloat(formData.diameter) || 0;
+                  if (D > 0 && n > 0) {
+                    const K = currentUnit === 'SI' ? 124.58 : 185;
+                    handleChange('friction', parseFloat(((K * n * n) / Math.pow(D, 1 / 3)).toFixed(6)).toString());
+                  }
+                  const WT = parseFloat(formData.pipeWT) || 0;
+                  if (eVal > 0 && WT > 0 && D > 0) {
+                    const C0 = currentUnit === 'SI' ? 1440 : 4720;
+                    const Kw = currentUnit === 'SI' ? 2.07e9 : 3e5;
+                    handleChange('celerity', parseFloat((C0 / Math.sqrt(1 + (Kw / eVal) * (D / WT))).toFixed(4)).toString());
+                  }
+                };
+                return (
+                  <PropSection title="Pipe Material">
+                    <div className="px-3 pt-2 pb-3 space-y-3">
+                      <p className="text-[11px] font-medium text-black leading-snug" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                        Select a material to auto-fill Manning's n and Young's Modulus (E).
+                      </p>
+                      <Popover open={stMaterialPickerOpen} onOpenChange={setStMaterialPickerOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            id="st-pipe-material"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={stMaterialPickerOpen}
+                            className="w-full justify-between bg-white font-semibold text-[12px] text-black border-slate-300 h-8"
+                            style={{ fontFamily: 'Poppins, sans-serif' }}
+                          >
+                            <span className={mat ? 'text-black' : 'text-slate-400 font-normal'}>
+                              {mat ? mat.label : '— Select pipe material —'}
+                            </span>
+                            <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-2" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                          <Command filter={(value, search) => value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0}>
+                            <CommandInput placeholder="Search material..." />
+                            <CommandList className="max-h-64">
+                              <CommandEmpty>No material found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem value="-- None (manual entry) --" onSelect={() => { applyStMaterial('__none__'); setStMaterialPickerOpen(false); }}>
+                                  — None (manual entry) —
+                                </CommandItem>
+                                {PIPE_MATERIALS.map(m => (
+                                  <CommandItem key={m.id} value={m.label} onSelect={() => { applyStMaterial(String(m.id)); setStMaterialPickerOpen(false); }}>
+                                    {m.label}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {mat && (
+                        <div className="rounded border border-slate-200 bg-slate-50 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setStShowMaterialProps(v => !v)}
+                            className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-semibold text-black hover:bg-slate-100 transition-colors"
+                            style={{ fontFamily: 'Poppins, sans-serif' }}
+                          >
+                            <span>{mat.label} — properties</span>
+                            {stShowMaterialProps ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                          </button>
+                          {stShowMaterialProps && (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] px-3 pb-2.5 pt-1 border-t border-slate-200">
+                              <div className="text-black font-medium">Manning's n</div>
+                              <div className="font-mono text-right text-black">{mat.manningsN}</div>
+                              <div className="text-black font-medium">Kutter's n</div>
+                              <div className="font-mono text-right text-black">{mat.kuttersN}</div>
+                              <div className="text-black font-medium">Hazen-Williams C</div>
+                              <div className="font-mono text-right text-black">{mat.hazenWilliamsC}</div>
+                              <div className="text-black font-medium">Modified H-W CR</div>
+                              <div className="font-mono text-right text-black">{mat.modifiedHWCR}</div>
+                              <div className="text-black font-medium">Roughness ε ({currentUnit === 'SI' ? 'm' : 'ft'})</div>
+                              <div className="font-mono text-right text-black">{currentUnit === 'SI' ? mat.roughnessHeight_m : mat.roughnessHeight_ft}</div>
+                              <div className="text-black font-medium">Young's E ({currentUnit === 'SI' ? 'Pa' : 'psi'})</div>
+                              <div className="font-mono text-right text-black">
+                                {(() => { const v = currentUnit === 'SI' ? mat.youngsModulus_Pa : mat.youngsModulus_psi; if (!v) return <span className="text-amber-600">n/a</span>; return v.toLocaleString(undefined, { maximumFractionDigits: 2 }); })()}
+                              </div>
+                              <div className="text-black font-medium">Poisson's Ratio</div>
+                              <div className="font-mono text-right text-black">{mat.poissonsRatio || <span className="text-amber-600">n/a</span>}</div>
+                              <div className="col-span-2 text-[10px] text-slate-500 italic mt-1 pt-1 border-t border-slate-200">
+                                Manning's n and E auto-filled. Enter WT below to compute wave speed.
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </PropSection>
+                );
+              })()}
+
+              {/* ── SURGE TANK: Wall Properties ── */}
+              <PropSection title="Wall Properties (E &amp; WT)">
+                <div className="px-3 pt-2 pb-0">
+                  <p className="text-[11px] font-medium text-black leading-snug" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                    Enter both <strong>E</strong> and <strong>WT</strong> to calculate wave speed. Diameter is used automatically.
+                  </p>
+                </div>
+                <PropRow label={`E (${currentUnit === 'SI' ? 'Pa' : 'psi'})`}>
+                  <NumericInput
+                    id="st-pipe-e"
+                    placeholder={currentUnit === 'SI' ? 'e.g. 2.07e11' : 'e.g. 30000000'}
+                    value={formData.pipeE}
+                    onValueChange={(v) => {
+                      handleChange('pipeE', v);
+                      const E = parseFloat(v);
+                      const C0 = currentUnit === 'SI' ? 1440 : 4720;
+                      const Kw = currentUnit === 'SI' ? 2.07e9 : 3e5;
+                      const D = parseFloat(formData.diameter) || 0;
+                      const WT = parseFloat(formData.pipeWT) || 0;
+                      if (!isNaN(E) && E > 0 && WT > 0 && D > 0) {
+                        handleChange('celerity', parseFloat((C0 / Math.sqrt(1 + (Kw / E) * (D / WT))).toFixed(4)).toString());
+                      }
+                    }}
+                    className="h-7 text-[12px] font-medium text-black border-slate-300"
+                    style={{ fontFamily: 'Poppins, sans-serif' } as any}
+                  />
+                </PropRow>
+                <PropRow label={`WT (${currentUnit === 'SI' ? 'm' : 'ft'})`}>
+                  <NumericInput
+                    id="st-pipe-wt"
+                    placeholder={currentUnit === 'SI' ? 'e.g. 0.006' : 'e.g. 0.02'}
+                    value={formData.pipeWT}
+                    onValueChange={(v) => {
+                      handleChange('pipeWT', v);
+                      const WT = parseFloat(v);
+                      const C0 = currentUnit === 'SI' ? 1440 : 4720;
+                      const Kw = currentUnit === 'SI' ? 2.07e9 : 3e5;
+                      const D = parseFloat(formData.diameter) || 0;
+                      const E = parseFloat(formData.pipeE) || 0;
+                      if (!isNaN(WT) && WT > 0 && E > 0 && D > 0) {
+                        handleChange('celerity', parseFloat((C0 / Math.sqrt(1 + (Kw / E) * (D / WT))).toFixed(4)).toString());
+                      }
+                    }}
+                    className="h-7 text-[12px] font-medium text-black border-slate-300"
+                    style={{ fontFamily: 'Poppins, sans-serif' } as any}
+                  />
+                </PropRow>
+                <div className="px-3 pb-3">
+                  <div className="rounded bg-slate-100 px-3 py-2 text-[11px] text-black font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                    <span>{currentUnit === 'SI' ? 'c = 1440 / √(1 + (2.07·10⁹/E)·(D/WT))' : 'c = 4720 / √(1 + (3·10⁵/E)·(D/WT))'}</span>
+                    {formData.celerity && (formData.pipeE || formData.pipeWT) ? (
+                      <span className="ml-2 font-bold text-blue-700">= {parseFloat(Number(formData.celerity).toFixed(4))} {currentUnit === 'SI' ? 'm/s' : 'ft/s'}</span>
+                    ) : null}
+                  </div>
+                </div>
               </PropSection>
             </>
           )}
