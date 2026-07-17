@@ -101,8 +101,9 @@ const COLS: Record<FilterKey, ColKey[]> = {
   reservoir:   ['rowNum','unitToggle','label','nodeNum','elevation','mode','resElev','hSchedNum','thPairs','comment'],
   junction:    ['rowNum','unitToggle','label','nodeNum','elevation','comment'],
   surgeTank:   ['rowNum','unitToggle','label','nodeNum','elevation','stType','tankTop','tankBot',
-                 'initWaterLevel','riserDiam','riserTop','hasShape','diameter',
-                 'celerity','friction','hasAddedLoss','cplus','cminus','shapePairs','comment'],
+                 'initWaterLevel','riserDiam','riserTop','hasShape','shapeType','diameter',
+                 'celerity','friction','manningsN','pipeE','pipeWT',
+                 'hasAddedLoss','cplus','cminus','shapePairs','comment'],
   flowBoundary:['rowNum','unitToggle','label','nodeNum','elevation','schedNum','qSchedPairs','comment'],
   pump:        ['rowNum','unitToggle','label','nodeNum','elevation','pumpStatus','pumpType','rq','rhead','rspeed','rtorque','wr2','comment'],
   checkValve:  ['rowNum','unitToggle','label','nodeNum','elevation','valveStatus','valveDiam','comment'],
@@ -429,7 +430,16 @@ function PairsPreviewCell({
 interface PairRow {
   time: string;
   value: string;
+  d?: string; // dimension input for shape pairs (non-custom shape type)
 }
+
+const SHAPE_DEFS_FT: Record<string, { label: string; aFactor: number; pFactor: number }> = {
+  circular:           { label: 'Circular',            aFactor: 0.785, pFactor: 3.14 },
+  horseshoe:          { label: 'Horse Shoe',           aFactor: 0.829, pFactor: 3.27 },
+  modified_horseshoe: { label: 'Modified Horse Shoe',  aFactor: 0.893, pFactor: 3.58 },
+  dshaped:            { label: 'D-Shaped',             aFactor: 0.813, pFactor: 3.21 },
+  custom:             { label: 'Custom',               aFactor: 0,     pFactor: 0    },
+};
 
 interface PairsEditorModalProps {
   open: boolean;
@@ -437,72 +447,185 @@ interface PairsEditorModalProps {
   title: string;
   timeLabel: string;
   valueLabel: string;
+  dLabel?: string;   // D-column label, only used when isShapePairs
   initialPairs: PairRow[];
   onSave: (pairs: PairRow[]) => void;
+  // Shape-pairs-specific
+  isShapePairs?: boolean;
+  initialShapeType?: string;
+  onSaveShapeType?: (shapeType: string) => void;
 }
 
 function PairsEditorModal({
-  open, onClose, title, timeLabel, valueLabel, initialPairs, onSave,
+  open, onClose, title, timeLabel, valueLabel, dLabel, initialPairs, onSave,
+  isShapePairs, initialShapeType, onSaveShapeType,
 }: PairsEditorModalProps) {
   const [rows, setRows] = useState<PairRow[]>([]);
+  const [shapeType, setShapeType] = useState<string>(initialShapeType || 'custom');
 
   useEffect(() => {
-    if (open) setRows(initialPairs.map(p => ({ ...p })));
+    if (open) {
+      setRows(initialPairs.map(p => ({ ...p })));
+      setShapeType(initialShapeType || 'custom');
+    }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const def = SHAPE_DEFS_FT[shapeType] || SHAPE_DEFS_FT.custom;
+  const isAuto = isShapePairs && shapeType !== 'custom' && def.aFactor > 0;
 
   const handleChange = (idx: number, field: 'time' | 'value', val: string) => {
     setRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r));
   };
-  const handleAdd = () => setRows(prev => [...prev, { time: '0', value: '0' }]);
+
+  const handleDChange = (idx: number, val: string) => {
+    const dNum = parseFloat(val);
+    setRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const a = !isNaN(dNum) && dNum > 0 ? parseFloat((def.aFactor * dNum * dNum).toFixed(6)).toString() : r.value;
+      return { ...r, d: val, value: a };
+    }));
+  };
+
+  const handleAChange = (idx: number, val: string) => {
+    const aNum = parseFloat(val);
+    setRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const d = !isNaN(aNum) && aNum > 0 && def.aFactor > 0
+        ? parseFloat(Math.sqrt(aNum / def.aFactor).toFixed(6)).toString()
+        : r.d ?? '';
+      return { ...r, value: val, d };
+    }));
+  };
+
+  const handleShapeTypeChange = (v: string) => {
+    setShapeType(v);
+    const newDef = SHAPE_DEFS_FT[v];
+    if (newDef && v !== 'custom' && newDef.aFactor > 0) {
+      setRows(prev => prev.map(r => {
+        const dNum = parseFloat(r.d ?? '');
+        if (!isNaN(dNum) && dNum > 0) {
+          return { ...r, value: parseFloat((newDef.aFactor * dNum * dNum).toFixed(6)).toString() };
+        }
+        return r;
+      }));
+    }
+  };
+
+  const handleAdd = () => setRows(prev => [...prev, { time: '0', value: '0', d: '' }]);
   const handleDelete = (idx: number) => setRows(prev => prev.filter((_, i) => i !== idx));
-  const handleSave = () => { onSave(rows); onClose(); };
+  const handleSave = () => {
+    onSave(rows);
+    if (isShapePairs && onSaveShapeType) onSaveShapeType(shapeType);
+    onClose();
+  };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
       <DialogContent
-        className="max-w-sm w-full z-[300] flex flex-col gap-0 p-0 overflow-hidden"
+        className="max-w-md w-full z-[300] flex flex-col gap-0 p-0 overflow-hidden"
         data-testid="pairs-editor-modal"
       >
         <DialogHeader className="px-4 py-3 border-b bg-white">
           <DialogTitle className="text-sm font-bold text-slate-800">{title}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col overflow-y-auto max-h-72 px-4 py-3 gap-1.5">
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_1fr_28px] gap-2 text-[11px] font-semibold text-slate-500 pb-1">
-            <span>Time (T)</span>
-            <span>{valueLabel}</span>
-            <span />
+        {isShapePairs && (
+          <div className="px-4 pt-3 pb-1 border-b bg-slate-50">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-semibold text-slate-600 shrink-0">Shape Type</span>
+              <Select value={shapeType} onValueChange={handleShapeTypeChange}>
+                <SelectTrigger className="h-7 text-[11px] border-slate-300 bg-white flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(SHAPE_DEFS_FT).map(([k, s]) => (
+                    <SelectItem key={k} value={k} className="text-[11px]">{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {isAuto && (
+              <div className="mt-1.5 rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-600 font-medium">
+                A = {def.aFactor} · D² &nbsp;|&nbsp; P = {def.pFactor} · D &nbsp;—&nbsp; enter either D or A to cross-calculate
+              </div>
+            )}
           </div>
+        )}
+
+        <div className="flex flex-col overflow-y-auto max-h-64 px-4 py-3 gap-1.5">
+          {/* Column headers */}
+          {isAuto ? (
+            <div className="grid grid-cols-[1fr_1fr_1fr_28px] gap-2 text-[11px] font-semibold text-slate-500 pb-1">
+              <span>{timeLabel}</span>
+              <span>{dLabel ?? 'D'}</span>
+              <span>{valueLabel} (auto)</span>
+              <span />
+            </div>
+          ) : (
+            <div className="grid grid-cols-[1fr_1fr_28px] gap-2 text-[11px] font-semibold text-slate-500 pb-1">
+              <span>{timeLabel}</span>
+              <span>{valueLabel}</span>
+              <span />
+            </div>
+          )}
 
           {rows.length === 0 && (
             <p className="text-[11px] text-slate-400 text-center py-6 italic">No pairs yet. Click "+ Add Point" below.</p>
           )}
 
           {rows.map((row, idx) => (
-            <div key={idx} className="grid grid-cols-[1fr_1fr_28px] gap-2 items-center">
-              <input
-                data-testid={`pair-time-${idx}`}
-                className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                type="text" inputMode="decimal" step="any"
-                value={row.time}
-                onChange={e => handleChange(idx, 'time', e.target.value)}
-              />
-              <input
-                data-testid={`pair-value-${idx}`}
-                className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                type="text" inputMode="decimal" step="any"
-                value={row.value}
-                onChange={e => handleChange(idx, 'value', e.target.value)}
-              />
-              <button
-                data-testid={`pair-delete-${idx}`}
-                className="text-red-400 hover:text-red-600 flex items-center justify-center"
-                onClick={() => handleDelete(idx)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            isAuto ? (
+              <div key={idx} className="grid grid-cols-[1fr_1fr_1fr_28px] gap-2 items-center">
+                <input
+                  data-testid={`pair-time-${idx}`}
+                  className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  type="text" inputMode="decimal" value={row.time}
+                  onChange={e => handleChange(idx, 'time', e.target.value)}
+                />
+                <input
+                  data-testid={`pair-d-${idx}`}
+                  className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  type="text" inputMode="decimal" value={row.d ?? ''}
+                  onChange={e => handleDChange(idx, e.target.value)}
+                />
+                <input
+                  data-testid={`pair-value-${idx}`}
+                  className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  type="text" inputMode="decimal" value={row.value}
+                  onChange={e => handleAChange(idx, e.target.value)}
+                />
+                <button data-testid={`pair-delete-${idx}`}
+                  className="text-red-400 hover:text-red-600 flex items-center justify-center"
+                  onClick={() => handleDelete(idx)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div key={idx} className="grid grid-cols-[1fr_1fr_28px] gap-2 items-center">
+                <input
+                  data-testid={`pair-time-${idx}`}
+                  className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  type="text" inputMode="decimal" step="any"
+                  value={row.time}
+                  onChange={e => handleChange(idx, 'time', e.target.value)}
+                />
+                <input
+                  data-testid={`pair-value-${idx}`}
+                  className="border border-slate-200 rounded px-2 h-7 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  type="text" inputMode="decimal" step="any"
+                  value={row.value}
+                  onChange={e => handleChange(idx, 'value', e.target.value)}
+                />
+                <button
+                  data-testid={`pair-delete-${idx}`}
+                  className="text-red-400 hover:text-red-600 flex items-center justify-center"
+                  onClick={() => handleDelete(idx)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )
           ))}
         </div>
 
@@ -802,10 +925,11 @@ function RowCells({
         if (f > 0 && diam > 0) return parseFloat(Math.sqrt((f * Math.pow(diam, 1 / 3)) / K).toFixed(6)).toString();
         return '';
       })();
+      const isManningsApplicable = isConduit || isSurge;
       return (
         <EditableCell key={col} value={mN} type="text" inputMode="decimal"
-          readOnly={!isConduit} dimmed={!isConduit}
-          onChange={v => changeEdge('manningsN', v)} testId={`cell-manningsn-${row.id}`} />
+          readOnly={!isManningsApplicable} dimmed={!isManningsApplicable}
+          onChange={v => change('manningsN', v)} testId={`cell-manningsn-${row.id}`} />
       );
     }
     case 'segments': return (
@@ -833,13 +957,13 @@ function RowCells({
     );
     case 'pipeE': return (
       <EditableCell key={col} value={d.pipeE ?? ''} type="text" inputMode="decimal"
-        readOnly={!isConduit} dimmed={!isConduit}
-        onChange={v => changeEdge('pipeE', v)} testId={`cell-pipee-${row.id}`} />
+        readOnly={!isConduit && !isSurge} dimmed={!isConduit && !isSurge}
+        onChange={v => change('pipeE', v)} testId={`cell-pipee-${row.id}`} />
     );
     case 'pipeWT': return (
       <EditableCell key={col} value={d.pipeWT ?? ''} type="text" inputMode="decimal"
-        readOnly={!isConduit} dimmed={!isConduit}
-        onChange={v => changeEdge('pipeWT', v)} testId={`cell-pipewt-${row.id}`} />
+        readOnly={!isConduit && !isSurge} dimmed={!isConduit && !isSurge}
+        onChange={v => change('pipeWT', v)} testId={`cell-pipewt-${row.id}`} />
     );
     case 'variable': return (
       <BoolCell key={col} value={!!d.variable} trueLabel="Yes" falseLabel="No"
@@ -929,6 +1053,20 @@ function RowCells({
     case 'hasShape': return (
       <BoolCell key={col} value={!!d.hasShape} trueLabel="Yes" falseLabel="No"
         dimmed={!isSurge} onChange={isSurge ? v => changeNode('hasShape', String(v)) : undefined} testId={`cell-hasshape-${row.id}`} />
+    );
+    case 'shapeType': return (
+      <SelectCell key={col}
+        value={isSurge && d.hasShape ? (String(d.shapeType || 'custom')) : ''}
+        options={[
+          { label: 'Custom', value: 'custom' },
+          { label: 'Circular', value: 'circular' },
+          { label: 'Horse Shoe', value: 'horseshoe' },
+          { label: 'Mod. Horse Shoe', value: 'modified_horseshoe' },
+          { label: 'D-Shaped', value: 'dshaped' },
+        ]}
+        dimmed={!isSurge || !d.hasShape}
+        onChange={isSurge && d.hasShape ? v => changeNode('shapeType', v) : undefined}
+        testId={`cell-shapetype-${row.id}`} />
     );
     case 'shapePairs': return (
       <PairsPreviewCell
@@ -1308,7 +1446,7 @@ export function FlexTable({ open, onClose }: FlexTableProps) {
     } else if (pairsEditor.pairsType === 'shapePairs') {
       const row = allRows.find(r => r.id === pairsEditor.rowId);
       const pts = (row?.data?.shape as any[]) || [];
-      return pts.map((p: any) => ({ time: String(p.e ?? 0), value: String(p.a ?? 0) }));
+      return pts.map((p: any) => ({ time: String(p.e ?? 0), value: String(p.a ?? 0), d: String(p.d ?? '') }));
     } else if (pairsEditor.pairsType === 'vSchedule') {
       const schedNum = pairsEditor.scheduleNumber || 1;
       const pts: { t: number; g: number }[] = vSchedules[schedNum] || [];
@@ -1335,6 +1473,8 @@ export function FlexTable({ open, onClose }: FlexTableProps) {
       const shape = rows.map(r => ({
         e: parseFloat(r.time) || 0,
         a: parseFloat(r.value) || 0,
+        d: r.d ?? '',
+        perimeter: 0,
       }));
       updateNodeData(pairsEditor.rowId, { shape });
     } else if (pairsEditor.pairsType === 'vSchedule') {
@@ -1687,8 +1827,20 @@ export function FlexTable({ open, onClose }: FlexTableProps) {
           title={editorTitle}
           timeLabel={editorTimeLabel}
           valueLabel={editorValueLabel}
+          dLabel={editorUnit === 'FPS' ? 'D (ft)' : 'D (m)'}
           initialPairs={editorInitialPairs}
           onSave={handleSavePairs}
+          isShapePairs={pairsEditor.pairsType === 'shapePairs'}
+          initialShapeType={
+            pairsEditor.pairsType === 'shapePairs'
+              ? ((editorRow?.data?.shapeType as string) || 'custom')
+              : undefined
+          }
+          onSaveShapeType={
+            pairsEditor.pairsType === 'shapePairs'
+              ? (st: string) => updateNodeData(pairsEditor.rowId, { shapeType: st })
+              : undefined
+          }
         />
       )}
 

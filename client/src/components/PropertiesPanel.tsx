@@ -336,6 +336,7 @@ export function PropertiesPanel() {
   const [showMaterialProps, setShowMaterialProps] = useState(false);
   const [stMaterialPickerOpen, setStMaterialPickerOpen] = useState(false);
   const [stShowMaterialProps, setStShowMaterialProps] = useState(false);
+  const [stShapeTypeOpen, setStShapeTypeOpen] = useState(false);
 
   useEffect(() => {
     const el = selectedElementId
@@ -2091,8 +2092,11 @@ export function PropertiesPanel() {
                           <div className="pt-1 pb-1">
                             <div className="text-[10px] font-semibold text-black uppercase tracking-wide mb-1" style={{ fontFamily: 'Poppins, sans-serif' }}>Shape Type</div>
                             <Select
+                              open={stShapeTypeOpen}
+                              onOpenChange={setStShapeTypeOpen}
                               value={shapeType}
                               onValueChange={(v) => {
+                                setStShapeTypeOpen(false);
                                 handleChange('shapeType', v);
                                 // When switching away from auto, clear computed fields; when switching to auto, recompute
                                 const newDef = SHAPE_DEFS[v];
