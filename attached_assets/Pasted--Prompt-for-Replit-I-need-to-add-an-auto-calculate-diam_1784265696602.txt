@@ -1,0 +1,41 @@
+**Prompt for Replit:**
+
+> I need to add an "auto-calculate diameter/area" feature to the Surge Tank properties panel, specifically inside the **Cross-Section** section where "Use SHAPE instead of DIAM" is enabled.
+>
+> **Context:** Currently, when "Enable SHAPE" is checked, the user must manually type Area (A) values for each Elevation (E) pair in the "SHAPE (E, A PAIRS)" table. I want to make this easier by letting the user pick a standard shape type and enter a single dimension, and have the software auto-calculate the Area for them.
+>
+> **Requirements:**
+>
+> 1. When "Enable SHAPE" is checked, add a new dropdown field labeled **"Shape Type"** above the E, A pairs table, with these options:
+>    - Circular
+>    - Horse Shoe
+>    - Modified Horse Shoe
+>    - D-Shaped
+>    - Custom (manual entry — this preserves the current manual-entry behavior)
+>
+> 2. When the user selects Circular, Horse Shoe, Modified Horse Shoe, or D-Shaped (i.e., anything except "Custom"), replace the manual "A (ft²)" input for each row with a **"D (ft)"** input instead. The user enters the reference dimension D for that elevation, and the app auto-computes Area using this formula:
+>
+>    ```
+>    Area = AreaFactor × D²
+>    ```
+>
+>    Use these Area Factor constants based on the selected shape:
+>
+>    | Shape | Area Factor | Perimeter Factor |
+>    |---|---|---|
+>    | Circular | 0.785 | 3.14 |
+>    | Horse Shoe | 0.829 | 3.27 |
+>    | Modified Horse Shoe | 0.893 | 3.58 |
+>    | D-Shaped | 0.813 | 3.21 |
+>
+> 3. Also compute **Perimeter = PerimeterFactor × D** for each row using the same table, and store it (even if not displayed yet) — I'll need it later for wetted-perimeter/friction calculations.
+>
+> 4. The computed Area value should populate into the existing "A (ft²)" field automatically (read-only when a shape is selected, editable only when "Custom" is chosen).
+>
+> 5. If the user selects "Custom," revert to the current behavior — manual A (ft²) entry, no auto-calculation.
+>
+> 6. Keep the existing "+ Add Pair" and delete-row functionality working the same way, just with the new D-based input flow layered on top.
+>
+> 7. Do this for both the Surge Tank Cross-Section panel and (if applicable) any other place in the app where SHAPE E-A pairs are used, so the behavior stays consistent.
+>
+> Please implement this without breaking the existing "Use SHAPE instead of DIAM" toggle or the plain "Diameter (ft)" input mode.

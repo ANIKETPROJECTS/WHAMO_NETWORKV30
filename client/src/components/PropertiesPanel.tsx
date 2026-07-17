@@ -2038,68 +2038,160 @@ export function PropertiesPanel() {
                 )}
                 {formData.hasShape && (
                   <div className="px-3 pb-3 space-y-2">
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[11px] font-semibold text-black uppercase tracking-wide" style={{ fontFamily: 'Poppins, sans-serif' }}>
-                        Shape (E, A pairs)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const shape = (formData.shape as any[]) || [];
-                          handleChange('shape', [...shape, { e: 0, a: 0 }]);
-                        }}
-                        className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-                        style={{ fontFamily: 'Poppins, sans-serif' }}
-                      >
-                        <Plus className="h-3 w-3" /> Add Pair
-                      </button>
-                    </div>
-                    {((formData.shape as any[]) || []).map((pair, index) => (
-                      <div key={index} className="flex items-center gap-2 p-2 border border-slate-200 rounded-md bg-slate-50 relative group">
-                        <div className="flex-1">
-                          <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>E ({currentUnit === 'SI' ? 'm' : 'ft'})</div>
-                          <NumericInput
-                            className="h-6 text-[11px] font-medium text-black border-slate-300"
-                            value={pair.e}
-                            onValueChange={(v) => {
-                              const newShape = [...(formData.shape as any[])];
-                              newShape[index] = { ...newShape[index], e: v };
-                              handleChange('shape', newShape);
-                            }}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>A ({currentUnit === 'SI' ? 'm²' : 'ft²'})</div>
-                          <NumericInput
-                            className="h-6 text-[11px] font-medium text-black border-slate-300"
-                            value={pair.a}
-                            onValueChange={(v) => {
-                              const newShape = [...(formData.shape as any[])];
-                              newShape[index] = { ...newShape[index], a: v };
-                              handleChange('shape', newShape);
-                            }}
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className="text-red-500 hover:text-red-700 p-1 shrink-0 flex items-center justify-center"
-                          onClick={() => {
-                            const newShape = (formData.shape as any[]).filter((_, i) => i !== index);
-                            handleChange('shape', newShape);
-                          }}
-                        >
-                          <img
-                            src={deleteIconImg}
-                            alt="Delete"
-                            className="h-3.5 w-3.5 object-contain"
-                            style={{ filter: 'brightness(0) saturate(100%) invert(23%) sepia(95%) saturate(2000%) hue-rotate(340deg) brightness(100%) contrast(110%)' }}
-                          />
-                        </button>
-                      </div>
-                    ))}
-                    {(!formData.shape || (formData.shape as any[]).length === 0) && (
-                      <p className="text-[11px] text-black text-center py-2 italic" style={{ fontFamily: 'Poppins, sans-serif' }}>No shape pairs added.</p>
-                    )}
+                    {/* ── Shape Type selector ── */}
+                    {(() => {
+                      const SHAPE_DEFS: Record<string, { label: string; aFactor: number; pFactor: number }> = {
+                        circular:          { label: 'Circular',              aFactor: 0.785, pFactor: 3.14 },
+                        horseshoe:         { label: 'Horse Shoe',            aFactor: 0.829, pFactor: 3.27 },
+                        modified_horseshoe:{ label: 'Modified Horse Shoe',   aFactor: 0.893, pFactor: 3.58 },
+                        dshaped:           { label: 'D-Shaped',              aFactor: 0.813, pFactor: 3.21 },
+                        custom:            { label: 'Custom',                aFactor: 0,     pFactor: 0    },
+                      };
+                      const shapeType: string = (formData.shapeType as string) || 'custom';
+                      const isAuto = shapeType !== 'custom' && !!SHAPE_DEFS[shapeType];
+                      const def = SHAPE_DEFS[shapeType];
+                      const dimLabel = currentUnit === 'SI' ? 'm' : 'ft';
+                      const areaLabel = currentUnit === 'SI' ? 'm²' : 'ft²';
+                      return (
+                        <>
+                          <div className="pt-1 pb-1">
+                            <div className="text-[10px] font-semibold text-black uppercase tracking-wide mb-1" style={{ fontFamily: 'Poppins, sans-serif' }}>Shape Type</div>
+                            <Select
+                              value={shapeType}
+                              onValueChange={(v) => {
+                                handleChange('shapeType', v);
+                                // When switching away from auto, clear computed fields; when switching to auto, recompute
+                                const newDef = SHAPE_DEFS[v];
+                                if (newDef && v !== 'custom') {
+                                  const updated = ((formData.shape as any[]) || []).map((p: any) => {
+                                    const d = parseFloat(p.d ?? p.e) || 0; // fallback: don't stomp existing d
+                                    if ((p.d == null || p.d === '') && parseFloat(p.a) > 0) return p; // already has manual A, keep
+                                    const a = d > 0 ? parseFloat((newDef.aFactor * d * d).toFixed(6)) : p.a ?? 0;
+                                    const perimeter = d > 0 ? parseFloat((newDef.pFactor * d).toFixed(6)) : p.perimeter ?? 0;
+                                    return { ...p, a, perimeter };
+                                  });
+                                  handleChange('shape', updated);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-[11px] font-medium text-black border-slate-300 bg-white" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                <SelectValue placeholder="— Select shape —" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {Object.entries(SHAPE_DEFS).map(([k, s]) => (
+                                  <SelectItem key={k} value={k} className="text-[11px]">{s.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {isAuto && (
+                              <div className="mt-1 rounded bg-slate-100 px-2 py-1 text-[10px] text-black font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                                A = {def.aFactor} · D² &nbsp;|&nbsp; P = {def.pFactor} · D
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-semibold text-black uppercase tracking-wide" style={{ fontFamily: 'Poppins, sans-serif' }}>
+                              Shape (E, {isAuto ? 'D' : 'A'} pairs)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const shape = (formData.shape as any[]) || [];
+                                handleChange('shape', [...shape, { e: 0, a: 0, d: '', perimeter: 0 }]);
+                              }}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 transition-colors"
+                              style={{ fontFamily: 'Poppins, sans-serif' }}
+                            >
+                              <Plus className="h-3 w-3" /> Add Pair
+                            </button>
+                          </div>
+
+                          {((formData.shape as any[]) || []).map((pair, index) => (
+                            <div key={index} className="flex items-center gap-2 p-2 border border-slate-200 rounded-md bg-slate-50 relative group">
+                              {/* E column — always editable */}
+                              <div className="flex-1">
+                                <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>E ({dimLabel})</div>
+                                <NumericInput
+                                  className="h-6 text-[11px] font-medium text-black border-slate-300"
+                                  value={pair.e}
+                                  onValueChange={(v) => {
+                                    const newShape = [...(formData.shape as any[])];
+                                    newShape[index] = { ...newShape[index], e: v };
+                                    handleChange('shape', newShape);
+                                  }}
+                                />
+                              </div>
+
+                              {isAuto ? (
+                                /* D input → auto-compute A */
+                                <>
+                                  <div className="flex-1">
+                                    <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>D ({dimLabel})</div>
+                                    <NumericInput
+                                      className="h-6 text-[11px] font-medium text-black border-slate-300"
+                                      value={pair.d ?? ''}
+                                      onValueChange={(v) => {
+                                        const d = parseFloat(v);
+                                        const newShape = [...(formData.shape as any[])];
+                                        const a = !isNaN(d) && d > 0 ? parseFloat((def.aFactor * d * d).toFixed(6)) : 0;
+                                        const perimeter = !isNaN(d) && d > 0 ? parseFloat((def.pFactor * d).toFixed(6)) : 0;
+                                        newShape[index] = { ...newShape[index], d: v, a, perimeter };
+                                        handleChange('shape', newShape);
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>A ({areaLabel})</div>
+                                    <div
+                                      className="h-6 flex items-center rounded-md border border-slate-200 bg-slate-100 px-2 text-[11px] font-medium text-slate-600 select-none"
+                                      style={{ fontFamily: 'Poppins, sans-serif' }}
+                                      title="Auto-computed from D"
+                                    >
+                                      {pair.a != null && pair.a !== 0 ? Number(pair.a).toFixed(4) : '—'}
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                /* Custom: manual A entry */
+                                <div className="flex-1">
+                                  <div className="text-[10px] font-medium text-black mb-0.5" style={{ fontFamily: 'Poppins, sans-serif' }}>A ({areaLabel})</div>
+                                  <NumericInput
+                                    className="h-6 text-[11px] font-medium text-black border-slate-300"
+                                    value={pair.a}
+                                    onValueChange={(v) => {
+                                      const newShape = [...(formData.shape as any[])];
+                                      newShape[index] = { ...newShape[index], a: v };
+                                      handleChange('shape', newShape);
+                                    }}
+                                  />
+                                </div>
+                              )}
+
+                              <button
+                                type="button"
+                                className="text-red-500 hover:text-red-700 p-1 shrink-0 flex items-center justify-center"
+                                onClick={() => {
+                                  const newShape = (formData.shape as any[]).filter((_, i) => i !== index);
+                                  handleChange('shape', newShape);
+                                }}
+                              >
+                                <img
+                                  src={deleteIconImg}
+                                  alt="Delete"
+                                  className="h-3.5 w-3.5 object-contain"
+                                  style={{ filter: 'brightness(0) saturate(100%) invert(23%) sepia(95%) saturate(2000%) hue-rotate(340deg) brightness(100%) contrast(110%)' }}
+                                />
+                              </button>
+                            </div>
+                          ))}
+
+                          {(!formData.shape || (formData.shape as any[]).length === 0) && (
+                            <p className="text-[11px] text-black text-center py-2 italic" style={{ fontFamily: 'Poppins, sans-serif' }}>No shape pairs added.</p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </PropSection>
